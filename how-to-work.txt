@@ -1,0 +1,17 @@
+Infos du module Keycloak:
+- Keycloak version: 26.0.7
+- Provider name: cloudfront-auth
+- Namespace: fr.julm.keycloak.providers.auth.cloudfront
+
+CloudFront configuré avec la clé RS256 du Realm Keycloak.
+
+Pour protéger une distribution CloudFront, le serveur Keycloak est ajouté en origine.
+Une règle "/.cdn-auth/*" est ajoutée et pointe vers le serveur Keycloak.
+"/.cdn-auth/*" est un endpoint Keycloak géré par ce module.
+
+Les règles à protéger on l'option authentification activée, qui nécéssite un cookie signé, avec redirection vers /.cdn-auth/_cf_redirect_403 si pas auth:
+- CloudFront ajoute les headers kc-realm-name, kc-client-id et kc-client-secret afin que /.cdn-auth/_cf_redirect_403 sache rediriger vers l'auth OpenID Keycloak.
+- /.cdn-auth/_cf_redirect_403 génère une page HTML basique qui contient une redirection vers l'auth OpenID Keycloak.
+- Une fois l'utilisateur authentifié, Keycloak redirige vers le endpoint /.cdn-auth/callback, qui génère le token JWT, vérifie les droits, et si autorisé, génère un cookie signé CloudFront à la de la clé privé.
+- Comme l'utilisateur passe par CloudFront, le domaine du cookie est le domaine de CloudFront.
+- L'utilisateur est ensuite redirigé vers l'URL de l'application, et grace au cookie signé, l'accès est autorisé. 
