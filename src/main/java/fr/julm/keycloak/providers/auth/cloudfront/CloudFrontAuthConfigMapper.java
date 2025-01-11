@@ -82,7 +82,7 @@ public class CloudFrontAuthConfigMapper extends AbstractOIDCProtocolMapper imple
     }
     
     @Override
-    protected void setClaim(IDToken token, ProtocolMapperModel mappingModel,
+    public void setClaim(IDToken token, ProtocolMapperModel mappingModel,
                           UserSessionModel userSession, KeycloakSession keycloakSession,
                           ClientSessionContext clientSessionCtx) {
         // Cette méthode est appelée lors de la création du token

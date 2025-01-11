@@ -1,5 +1,6 @@
 package fr.julm.keycloak.providers.auth.cloudfront;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.jboss.logging.Logger;
@@ -25,6 +26,7 @@ public class CloudFrontAuthProviderConfig {
     // spi-realm-restapi-extension-cloudfront-auth-access-roles
     private static final String CONF_ACCESS_ROLES_NAME = "accessRoles";
     private static final String CONF_ACCESS_ROLES_DEFAULT = "cloudfront-access";
+    private static final List<String> CONF_ACCESS_ROLES_DEFAULT_LIST = List.of(CONF_ACCESS_ROLES_DEFAULT.split(","));
 
     // spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes
     private static final String CONF_AUTH_COOKIES_ATTRIBUTES_NAME = "authCookiesAttributes";
@@ -34,7 +36,7 @@ public class CloudFrontAuthProviderConfig {
     private static Integer redirectDelay = CONF_REDIRECT_DELAY_DEFAULT;
     private static Integer redirectFailbackDelay = CONF_REDIRECT_FAILBACK_DELAY_DEFAULT;
     private static Boolean displayRequestId = CONF_DISPLAY_REQUEST_ID_DEFAULT;
-    private static List<String> accessRoles = List.of(CONF_ACCESS_ROLES_DEFAULT);
+    private static List<String> accessRoles = CONF_ACCESS_ROLES_DEFAULT_LIST;
     private static String authCookiesAttributes = CONF_AUTH_COOKIES_ATTRIBUTES_DEFAULT;
 
     private static final Logger logger = Logger.getLogger(CloudFrontAuthProviderConfig.class);
@@ -45,17 +47,24 @@ public class CloudFrontAuthProviderConfig {
                 "redirectDelay=%d, redirectFailbackDelay=%d, displayRequestId=%b, accessRoles=%s, authCookiesAttributes=%s",
             redirectDelay, redirectFailbackDelay, displayRequestId, accessRoles, authCookiesAttributes);
         
-        if (config.get(CONF_REDIRECT_DELAY_NAME) != null) {
+        if (config.getInt(CONF_REDIRECT_DELAY_NAME) != null) {
             redirectDelay = config.getInt(CONF_REDIRECT_DELAY_NAME);
         }
-        if (config.get(CONF_REDIRECT_FAILBACK_DELAY_NAME) != null) {
+        if (config.getInt(CONF_REDIRECT_FAILBACK_DELAY_NAME) != null) {
             redirectFailbackDelay = config.getInt(CONF_REDIRECT_FAILBACK_DELAY_NAME);
         }
-        if (config.get(CONF_DISPLAY_REQUEST_ID_NAME) != null) {
+        if (config.getBoolean(CONF_DISPLAY_REQUEST_ID_NAME) != null) {
             displayRequestId = config.getBoolean(CONF_DISPLAY_REQUEST_ID_NAME);
         }
         if (config.get(CONF_ACCESS_ROLES_NAME) != null) {
-            accessRoles = List.of(config.get(CONF_ACCESS_ROLES_NAME).split(","));
+            // Dont include empty string, and use default list if empty
+            accessRoles = Arrays.stream(config.get(CONF_ACCESS_ROLES_NAME).split(","))
+                .filter(role -> !role.isEmpty())
+                .toList();
+
+            if (accessRoles.isEmpty()) {
+                accessRoles = CONF_ACCESS_ROLES_DEFAULT_LIST;
+            }
         }
         if (config.get(CONF_AUTH_COOKIES_ATTRIBUTES_NAME) != null) {
             authCookiesAttributes = config.get(CONF_AUTH_COOKIES_ATTRIBUTES_NAME);
