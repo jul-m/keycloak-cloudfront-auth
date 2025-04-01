@@ -8,7 +8,7 @@
             background-color: silver;
         }
     </style>
-    <meta id="refresh-meta" http-equiv="refresh" content="{{redirectFailbackDelay}}; URL={{authUrl}}" />
+    <meta id="refresh-meta" http-equiv="refresh" content="{{redirectFallbackDelay}}; URL={{authUrl}}" />
 </head>
 <body>
     <noscript>
@@ -20,7 +20,7 @@
         var redirectUrl = '{{authUrl}}&original_uri=' + encodeURIComponent(currentUrl);
         var redirectDelay = parseInt("{{redirectDelay}}") * 1000;
         document.getElementById("redirect-link").href = redirectUrl;
-        document.getElementById("refresh-meta").content = "{{redirectFailbackDelay}}; URL=" + redirectUrl;
+        document.getElementById("refresh-meta").content = "{{redirectFallbackDelay}}; URL=" + redirectUrl;
         setTimeout(() => {  window.location.href = redirectUrl; }, redirectDelay);
     </script>
 </body>

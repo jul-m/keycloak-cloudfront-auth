@@ -18,6 +18,7 @@ import org.keycloak.representations.AccessToken;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.util.DefaultClientSessionContext;
 
+import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
 import java.time.Instant;
@@ -107,7 +108,7 @@ public class CloudFrontAuthResource {
             attributes.put("redirectUriPath", CloudFrontAuthProviderConfig.REDIRECT_URI_PATH);
             attributes.put("authUrl", authUrl);
             attributes.put("redirectDelay", CloudFrontAuthProviderConfig.getRedirectToAuthDelaySec());
-            attributes.put("redirectFailbackDelay", CloudFrontAuthProviderConfig.getRedirectToAuthFailbackDelaySec());
+            attributes.put("redirectFallbackDelay", CloudFrontAuthProviderConfig.getRedirectToAuthFallbackDelaySec());
             
             return redirectTemplate.serve(session, attributes, Response.Status.OK);
         }
@@ -164,13 +165,13 @@ public class CloudFrontAuthResource {
             event = new EventBuilder(
                     authenticatedClient.realm, session, session.getContext().getConnection()
                 ).event(EventType.CODE_TO_TOKEN)
-                .client(authenticatedClient.client)
-                .ipAddress(session.getContext().getConnection().getRemoteAddr())
-                .detail(Details.AUTH_TYPE, "cloudfront")
-                .detail(Details.GRANT_TYPE, OAuth2Constants.AUTHORIZATION_CODE)
-                .detail(Details.CLIENT_AUTH_METHOD, OAuth2Constants.CLIENT_SECRET)
-                .detail("cloudfront_sign_key_id", cfSignKeyId)
-                .detail("cloudfront_request_id", cfRequestId);
+                 .client(authenticatedClient.client)
+                 .ipAddress(session.getContext().getConnection().getRemoteAddr())
+                 .detail(Details.AUTH_TYPE, "cloudfront")
+                 .detail(Details.GRANT_TYPE, OAuth2Constants.AUTHORIZATION_CODE)
+                 .detail(Details.CLIENT_AUTH_METHOD, OAuth2Constants.CLIENT_SECRET)
+                 .detail("cloudfront_sign_key_id", cfSignKeyId)
+                 .detail("cloudfront_request_id", cfRequestId);
 
             // Parse the code and get the authentication session
             ParseResult parseResult = OAuth2CodeParser.parseCode(session, code, authenticatedClient.realm, event);
@@ -233,8 +234,8 @@ public class CloudFrontAuthResource {
             }
 
             Instant cookieExpiration = Instant.ofEpochSecond(accessToken.getExp());
-            String cookieResourceUrl = UriBuilder.fromUri(originalUri)
-                .replacePath("/*").replaceQuery("").toTemplate();
+            URI originalUriObj = URI.create(originalUri);
+            String cookieResourceUrl = originalUriObj.getScheme() + "://" + originalUriObj.getHost() + "/*";
 
             // Generate signed cookies for CloudFront
             String[] cookies = CloudFrontCookieSigner.generateSignedCookies(

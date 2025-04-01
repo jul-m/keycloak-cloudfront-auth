@@ -80,7 +80,7 @@ public class CloudFrontAuthenticateClient {
 
         logger.infof("%s - Client authenticated [realm=%s, client=%s]", logPrefix, realmName, clientId);
 
-        if (this.client.getRootUrl().isEmpty()) {
+        if (this.client.getRootUrl() == null || this.client.getRootUrl().isEmpty()) {
             this.rootUrl = "undefined";
         }
         else if (this.client.getRootUrl().endsWith("/")) {
@@ -90,7 +90,7 @@ public class CloudFrontAuthenticateClient {
             this.rootUrl = this.client.getRootUrl();
         }
 
-        if (!this.client.getBaseUrl().isEmpty()) {
+        if (this.client.getBaseUrl() != null && !this.client.getBaseUrl().isEmpty()) {
             this.homeUrl = this.client.getBaseUrl();
         }
         else if (this.rootUrl != null) {

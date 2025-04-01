@@ -45,7 +45,7 @@ public class CloudFrontAuthResourceProviderFactory
         Map<String, String> info = new HashMap<>();
         info.put("Version", VERSION);
         info.put("Redirect Delay", String.valueOf(CloudFrontAuthProviderConfig.getRedirectToAuthDelaySec()));
-        info.put("Redirect Failback Delay", String.valueOf(CloudFrontAuthProviderConfig.getRedirectToAuthFailbackDelaySec()));
+        info.put("Redirect Fallback Delay", String.valueOf(CloudFrontAuthProviderConfig.getRedirectToAuthFallbackDelaySec()));
         info.put("Display Request ID in Error Pages", String.valueOf(CloudFrontAuthProviderConfig.displayRequestIdEnabled()));
         info.put("Access Roles", "[" + String.join(", ", CloudFrontAuthProviderConfig.getAccessRoles()) + "]");
         info.put("Auth Cookies Attributes", CloudFrontAuthProviderConfig.getAuthCookiesAttributes());

@@ -129,10 +129,10 @@ public class CloudFrontTemplate {
             String html = render(session, attributes);
                 
             return Response.status(status)
-                .type(MediaType.TEXT_HTML_TYPE)
-                .cacheControl(CACHE_CONTROL_NO_CACHE)
-                .entity(html)
-                .build();
+                           .type(MediaType.TEXT_HTML_TYPE)
+                           .cacheControl(CACHE_CONTROL_NO_CACHE)
+                           .entity(html)
+                           .build();
         }
         catch (Exception e) {
             logger.error("Failed to render and serve template.", e);
@@ -142,9 +142,9 @@ public class CloudFrontTemplate {
 
     public static Response basicInternalServerErrorPage() {
         return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .type(MediaType.TEXT_HTML_TYPE)
-                .cacheControl(CACHE_CONTROL_NO_CACHE)
-                .entity("Internal Server Error")
-                .build();
+                       .type(MediaType.TEXT_HTML_TYPE)
+                       .cacheControl(CACHE_CONTROL_NO_CACHE)
+                       .entity("Internal Server Error")
+                       .build();
     }
 }

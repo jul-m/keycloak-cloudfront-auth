@@ -7,7 +7,7 @@
             background-color: silver;
         }
     </style>
-    <meta id="refresh-meta" http-equiv="refresh" content="${redirectFailbackDelay}; URL=${authUrl}" />
+    <meta id="refresh-meta" http-equiv="refresh" content="${redirectFallbackDelay}; URL=${authUrl}" />
 </head>
 <body>
     <noscript>
@@ -21,7 +21,7 @@
         var redirectDelay = parseInt("${redirectDelay}") * 1000;
 
         document.getElementById("redirect-link").href = authUrl;
-        document.getElementById("refresh-meta").content = "${redirectFailbackDelay}; URL=" + authUrl;
+        document.getElementById("refresh-meta").content = "${redirectFallbackDelay}; URL=" + authUrl;
 
         setTimeout(() => {  window.location.href = authUrl; }, redirectDelay);
     </script>
