@@ -1,5 +1,7 @@
 # Keycloak CloudFront Authentication Extension - Copilot Instructions
 
+Chat with me in French, but code in English.
+
 ## Architecture Overview
 
 This Keycloak extension replaces AWS Lambda@Edge with a server-side solution for CloudFront authentication. The authentication flow:

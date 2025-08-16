@@ -2,63 +2,68 @@ name: keycloak-cloudfront-auth
 
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.2}
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.3}
     container_name: kc-cloudfront-auth_keycloak
     environment:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
-      #- KC_HOSTNAME=kc-cloudfront-auth_keycloak
       - KC_PROXY_HEADERS=xforwarded
-      #- KC_FEATURES=preview
       - KC_HTTP_PORT=80
       - KC_HEALTH_ENABLED=true
-      #- KC_LOG_LEVEL=INFO,fr.julm:DEBUG
+      - KC_LOG_LEVEL=WARN,fr.julm:INFO
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=5
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=10
     ports:
       - "${KC_HOST_PORT:-8080}:80"
     command:
       - start-dev
     volumes:
       - keycloak-providers:/opt/keycloak/providers
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:80"]
-    #   interval: 5s
-    #   timeout: 2s
-    #   retries: 15
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 5s
+      timeout: 2s
+      retries: 15
 
   configurator:
     image: docker:cli
+    container_name: kc-cloudfront-auth_configurator
     volumes:
       - ./mounts/configurator/providers:/mnt/providers:ro
       - ./mounts/configurator/scripts:/mnt/scripts:ro
-      - keycloak-providers:/mnt/keycloak-providers
+      - ./mounts/configurator/config:/mnt/config:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - keycloak-providers:/mnt/keycloak-providers
     environment:
-      - KEYCLOAK_VERSION=${KEYCLOAK_VERSION:-26.2}
+      - KEYCLOAK_VERSION=${KEYCLOAK_VERSION:-26.3}
       - PROVIDER_JAR_URL=${PROVIDER_JAR_URL:-}
     command: sh /mnt/scripts/configure.sh
 
-  # openresty:
-  #   image: openresty/openresty:alpine-fat
-  #   container_name: kc-cloudfront-auth_openresty
-  #   environment:
-  #     - DEBUG_PAGE_NO_AUTH=on_error
-  #     - KC_REALM_NAME=cloudfront-test
-  #     - KC_CLIENT_ID=cloudfront-test-client
-  #     - KC_CLIENT_SECRET=TestSecret123
-  #     - KC_CF_SIGN_KEY_ID=ABCDEFGH
-  #     - KC_URL=http://localhost:${KC_HOST_PORT:-8080}
-  #     - APP_URL=
-  #   ports:
-  #     - "${OPENRESTY_HOST_PORT:-8081}:80"
-  #   volumes:
-  #     - ./mounts/openresty/files/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-  #     - ./mounts/openresty/mnt_kc-cf-auth:/mnt/kc-cf-auth:ro
-  #   command: >
-  #     sh -c "
-  #       luarocks install lua-resty-rsa &&
-  #       luarocks install lua-resty-template &&
-  #       /usr/local/openresty/bin/openresty -g 'daemon off;'
-  #     "
+  openresty:
+    image: openresty/openresty:alpine-fat
+    container_name: kc-cloudfront-auth_openresty
+    environment:
+      - DEBUG_PAGE_NO_AUTH=on_error
+      - KC_REALM_NAME=cloudfront-test
+      - KC_CLIENT_ID=cloudfront-test-client
+      - KC_CLIENT_SECRET=TestSecret123
+      - KC_CF_SIGN_KEY_ID=ABCDEFGH
+      - KC_URL=http://localhost:${KC_HOST_PORT:-8080}
+      - KC_INTERNAL_URL=http://kc-cloudfront-auth_keycloak
+      - APP_URL=
+    ports:
+      - "${OPENRESTY_HOST_PORT:-8081}:80"
+    volumes:
+      - ./mounts/openresty/files/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./mounts/openresty/mnt_kc-cf-auth:/mnt/kc-cf-auth:ro
+    command: >
+      sh -c "
+        luarocks install lua-resty-rsa &&
+        luarocks install lua-resty-template &&
+        luarocks install lua-resty-http &&
+        luarocks install lua-resty-openssl &&
+        /usr/local/openresty/bin/openresty -g 'daemon off;'
+      "
 
 
 volumes:

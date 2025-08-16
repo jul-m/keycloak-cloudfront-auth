@@ -69,16 +69,32 @@ cp target/keycloak-cloudfront-auth-1.0.0-SNAPSHOT.jar /path/to/keycloak/provider
 ## Configuration Keycloak
 
 ### conf/keycloak.conf
-
-Pour activer l'extension, ajouter les lignes suivantes dans le fichier `conf/keycloak.conf` :
-
-```properties
+```ini
 spi-realm-restapi-extension-cloudfront-auth-redirect-delay=0
 spi-realm-restapi-extension-cloudfront-auth-redirect-failback-delay=5
 spi-realm-restapi-extension-cloudfront-auth-display-request-id=true
 spi-realm-restapi-extension-cloudfront-auth-access-roles=cloudfront-access,webapp-access
 spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes=Path=/; HttpOnly
 ```
+
+### Paramètres en ligne de commande
+```ini
+--spi-realm-restapi-extension-cloudfront-auth-redirect-delay=0
+--spi-realm-restapi-extension-cloudfront-auth-redirect-failback-delay=5
+--spi-realm-restapi-extension-cloudfront-auth-display-request-id=true
+--spi-realm-restapi-extension-cloudfront-auth-access-roles=cloudfront-access,webapp-access
+--spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes="Path=/; HttpOnly"
+```
+
+### Format des variables d'environnement
+```ini
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=0
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FAILBACK_DELAY=5
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_DISPLAY_REQUEST_ID=true
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_ACCESS_ROLES=cloudfront-access,webapp-access
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_AUTH_COOKIES_ATTRIBUTES="Path=/; HttpOnly"
+```
+
 
 ## Fonctionnement
 
