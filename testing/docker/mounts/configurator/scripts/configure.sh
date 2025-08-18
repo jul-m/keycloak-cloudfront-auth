@@ -21,7 +21,28 @@ else
 fi
 
 # Attente que Keycloak soit prêt
-while ! curl -s http://kc-cloudfront-auth_keycloak:9000/health/ready; do
+# Keycloak >=25 expose le health sur le port 9000 par défaut dans certaines images.
+# Pour être compatible avec les versions plus anciennes (<=24) on tente d'abord
+# le port attendu selon la version puis on fait un fallback sur l'autre port.
+check_keycloak_health() {
+  # Receives a space-separated list of URLs to try in order
+  for url in "$@"; do
+    if curl -s --fail "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if echo "${KEYCLOAK_VERSION:-}" | grep -E '^(25|26|27|28|29|30|31|32|33|34|35|36|37|38|39|40)\.' >/dev/null 2>&1; then
+  PRIMARY_HEALTH="http://kc-cloudfront-auth_keycloak:9000/health/ready"
+  SECONDARY_HEALTH="http://kc-cloudfront-auth_keycloak:80/health/ready"
+else
+  PRIMARY_HEALTH="http://kc-cloudfront-auth_keycloak:80/health/ready"
+  SECONDARY_HEALTH="http://kc-cloudfront-auth_keycloak:9000/health/ready"
+fi
+
+while ! check_keycloak_health "$PRIMARY_HEALTH" "$SECONDARY_HEALTH"; do
   echo "Attente de Keycloak..."
   sleep 5
 done
@@ -31,7 +52,8 @@ if [ -n "$(ls -A /mnt/keycloak-providers/)" ]; then
   echo "Redémarrage de Keycloak pour prise en compte des providers"
   docker restart kc-cloudfront-auth_keycloak
   
-  while ! curl -s http://kc-cloudfront-auth_keycloak:9000/health/ready; do
+  # Après redémarrage, réutiliser la même logique de checks (primary puis fallback)
+  while ! check_keycloak_health "$PRIMARY_HEALTH" "$SECONDARY_HEALTH"; do
     echo "Attente du redémarrage de Keycloak..."
     sleep 5
   done
@@ -42,33 +64,36 @@ echo "Configuration du realm cloudfront-test avec keycloak-config-cli"
 
 # Détermination de la version keycloak-config-cli en fonction de la version Keycloak
 # Format: KEYCLOAK_VERSION (ex: 26.3) -> KC_CONFIG_CLI_KC_VERSION (ex: 26.1.0)
-KC_MAJOR_VERSION=$(echo "$KEYCLOAK_VERSION" | cut -d'.' -f1)
-case "$KC_MAJOR_VERSION" in
-  "26")
+case "$KEYCLOAK_VERSION" in
+  "26.1")
     KC_CONFIG_CLI_KC_VERSION="26.1.0"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;
-  "25")
+  "26.0")
+    KC_CONFIG_CLI_KC_VERSION="26.0.5"
+    KC_CONFIG_CLI_VERSION="6.4.0"
+    ;;
+  "25.0")
     KC_CONFIG_CLI_KC_VERSION="25.0.1"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;
-  "24")
+  "24.0")
     KC_CONFIG_CLI_KC_VERSION="24.0.5"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;
-  "23")
+  "23.0")
     KC_CONFIG_CLI_KC_VERSION="23.0.7"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;
-  "22")
+  "22.0")
     KC_CONFIG_CLI_KC_VERSION="22.0.4"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;
-  "21")
+  "21.1")
     KC_CONFIG_CLI_KC_VERSION="21.1.2"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;
-  "18")
+  "18.0")
     KC_CONFIG_CLI_KC_VERSION="18.0.2"
     KC_CONFIG_CLI_VERSION="6.4.0"
     ;;

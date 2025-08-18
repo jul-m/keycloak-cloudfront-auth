@@ -80,20 +80,26 @@ public class CloudFrontAuthenticateClient {
 
         logger.infof("%s - Client authenticated [realm=%s, client=%s]", logPrefix, realmName, clientId);
 
-        if (this.client.getRootUrl() == null || this.client.getRootUrl().isEmpty()) {
-            this.rootUrl = "undefined";
+        this.homeUrl = "undefined";
+        if (this.client.getBaseUrl().endsWith("/")) {
+            this.rootUrl = this.client.getBaseUrl().substring(0, this.client.getBaseUrl().length() - 1);
         }
-        else if (this.client.getRootUrl().endsWith("/")) {
+        else if (this.rootUrl != null) {
+            this.homeUrl = this.client.getBaseUrl();
+        }
+
+        this.rootUrl = "undefined";
+        if (this.client.getRootUrl().endsWith("/")) {
             this.rootUrl = this.client.getRootUrl().substring(0, this.client.getRootUrl().length() - 1);
         }
-        else {
+        else if (this.client.getRootUrl() != null) {
             this.rootUrl = this.client.getRootUrl();
         }
 
-        if (this.client.getBaseUrl() != null && !this.client.getBaseUrl().isEmpty()) {
-            this.homeUrl = this.client.getBaseUrl();
+        if (this.rootUrl == "undefined" && this.homeUrl != "undefined") {
+            this.rootUrl = this.homeUrl;
         }
-        else if (this.rootUrl != null) {
+        else if (this.homeUrl == "undefined" && this.rootUrl != "undefined") {
             this.homeUrl = this.rootUrl;
         }
 
@@ -103,8 +109,7 @@ public class CloudFrontAuthenticateClient {
 
         this.authEndpoint = realmBaseUrl + "/auth";
         this.tokenEndpoint = realmBaseUrl + "/token";
-        String baseUri = this.rootUrl;
-        String redirectUri = UriBuilder.fromUri(baseUri)
+        String redirectUri = UriBuilder.fromUri(this.homeUrl)
             .path(CloudFrontAuthProviderConfig.REDIRECT_URI_PATH)
             .build()
             .toString();

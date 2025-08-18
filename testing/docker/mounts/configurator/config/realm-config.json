@@ -17,6 +17,8 @@
       "implicitFlowEnabled": false,
       "publicClient": false,
       "protocol": "openid-connect",
+      "rootUrl": "http://localhost:8081",
+      "baseUrl": "http://localhost:8081",
       "redirectUris": [
         "http://localhost:8081/.cdn-auth/callback/*"
       ],
@@ -49,16 +51,16 @@
   },
   "users": [
     {
-      "username": "testuser",
+      "username": "user1",
       "enabled": true,
-      "email": "testuser@example.com",
+      "email": "user1@example.com",
       "emailVerified": true,
       "firstName": "Test",
-      "lastName": "User",
+      "lastName": "Authorized User",
       "credentials": [
         {
           "type": "password",
-          "value": "testpassword",
+          "value": "password123",
           "temporary": false
         }
       ],
@@ -66,6 +68,23 @@
         "cloudfront-test-client": [
           "cloudfront-access"
         ]
+      }
+    },
+    {
+      "username": "user2",
+      "enabled": true,
+      "email": "user2@example.com",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Unauthorized User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
       }
     }
   ]
