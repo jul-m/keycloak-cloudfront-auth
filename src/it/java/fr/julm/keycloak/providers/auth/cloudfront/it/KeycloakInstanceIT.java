@@ -19,12 +19,12 @@ public class KeycloakInstanceIT extends AbstractKeycloakIntegrationTest {
     void testKeycloakIsRunning() {
         ServerInfoRepresentation serverInfo = getAdminClient().serverInfo().getInfo();
         String serverVersion = serverInfo.getSystemInfo().getVersion();
-        String expectedVersion = System.getProperty("keycloak-major.version");
+        String expectedVersion = System.getProperty("keycloak-version.major-minor");
 
         LOGGER.info("=> Version of tested Keycloak instance: " + serverVersion);
 
         if (expectedVersion == null) {
-            LOGGER.warning("!! The Java property 'keycloak-major.version' not set, " +
+            LOGGER.warning("!! The Java property 'keycloak-version.major-minor' not set, " +
                 "consider Keycloak instance version is correct. !!");
         }
         else {
@@ -46,6 +46,7 @@ public class KeycloakInstanceIT extends AbstractKeycloakIntegrationTest {
             .response();
         
         String body = response.getBody().asString();
-        assertTrue(body.contains(REALM_NAME), "Realm response should contain realm name (" + REALM_NAME + ")");
+        assertTrue(body.contains(ITEnvConfig.REALM_NAME),
+            "Realm response should contain realm name (" + ITEnvConfig.REALM_NAME + ")");
     }
 }

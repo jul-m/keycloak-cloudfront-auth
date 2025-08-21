@@ -2,23 +2,25 @@ name: keycloak-cloudfront-auth
 
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.3}
+    image: quay.io/keycloak/keycloak:${KCA_KC_VERSION}
     container_name: kc-cloudfront-auth_keycloak
     environment:
-      - KEYCLOAK_ADMIN=admin
-      - KEYCLOAK_ADMIN_PASSWORD=admin
-      - KC_PROXY_HEADERS=xforwarded
-      - KC_HTTP_PORT=80
+      - KEYCLOAK_ADMIN=${KCA_KC_ADMIN_USER}                   # KC <= 25.0
+      - KEYCLOAK_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD}      # KC <= 25.0
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD}  # KC >= 26.0
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KCA_KC_ADMIN_USER}      # KC >= 26.0
       - KC_HEALTH_ENABLED=true
-      - KC_LOG_LEVEL=WARN,fr.julm:INFO
-      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=5
-      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=10
+      - KC_HTTP_PORT=80
+      - KC_LOG_LEVEL=${KCA_KC_LOG_LEVEL}
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=${KCA_KC_AUTH_REDIRECT_DELAY}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=${KCA_KC_AUTH_REDIRECT_FALLBACK_DELAY}
     ports:
-      - "${KC_HOST_PORT:-8080}:80"
+      - "${KCA_KC_HOST_PORT}:80"
     command:
       - start-dev
     volumes:
-      - keycloak-providers:/opt/keycloak/providers
+      - ./mounts/kc_providers:/opt/keycloak/providers:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80"]
       interval: 5s
@@ -26,36 +28,37 @@ services:
       retries: 15
 
   configurator:
-    image: docker:cli
+    image: eclipse-temurin:21
     container_name: kc-cloudfront-auth_configurator
+    environment:
+      - KEYCLOAK_VERSION=${KCA_KC_VERSION}
+      - KCA_KC_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD}
+      - KCA_KC_ADMIN_USER=${KCA_KC_ADMIN_USER}
+      - KCA_KC_CLIENT_ID=${KCA_KC_CLIENT_ID}
+      - KCA_KC_CLIENT_SECRET=${KCA_KC_CLIENT_SECRET}
+      - KCA_KC_REALM_NAME=${KCA_KC_REALM_NAME}
+      - KCA_OPENRESTY_HOST_PORT=${KCA_OPENRESTY_HOST_PORT}
     volumes:
-      - ./mounts/configurator/providers:/mnt/providers:ro
-      - ./mounts/configurator/scripts:/mnt/scripts:ro
-      - ./mounts/configurator/config:/mnt/config:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - keycloak-providers:/mnt/keycloak-providers
-    environment:
-      - KEYCLOAK_VERSION=${KEYCLOAK_VERSION:-26.3}
-      - PROVIDER_JAR_URL=${PROVIDER_JAR_URL:-}
-    command: sh /mnt/scripts/configure.sh
+      - ./mounts/configurator:/mnt/docker:ro
+    command: sh /mnt/docker/configure.sh
 
-  openresty:
+  cf-auth-sim:
     image: openresty/openresty:alpine-fat
-    container_name: kc-cloudfront-auth_openresty
+    container_name: kc-cloudfront-auth_cf-auth-sim
     environment:
-      - DEBUG_PAGE_NO_AUTH=on_error
-      - KC_REALM_NAME=cloudfront-test
-      - KC_CLIENT_ID=cloudfront-test-client
-      - KC_CLIENT_SECRET=TestSecret123
-      - KC_CF_SIGN_KEY_ID=ABCDEFGH
-      - KC_URL=http://localhost:${KC_HOST_PORT:-8080}
+      - DEBUG_PAGE_NO_AUTH=${KCA_DEBUG_PAGE_NO_AUTH}
+      - KC_REALM_NAME=${KCA_KC_REALM_NAME}
+      - KC_CLIENT_ID=${KCA_KC_CLIENT_ID}
+      - KC_CLIENT_SECRET=${KCA_KC_CLIENT_SECRET}
+      - KC_CF_SIGN_KEY_ID=${KCA_CF_SIGN_KEY_ID}
+      - KC_URL=http://localhost:${KCA_KC_HOST_PORT}
       - KC_INTERNAL_URL=http://kc-cloudfront-auth_keycloak
       - APP_URL=
     ports:
-      - "${OPENRESTY_HOST_PORT:-8081}:80"
+      - "${KCA_OPENRESTY_HOST_PORT}:80"
     volumes:
-      - ./mounts/openresty/files/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-      - ./mounts/openresty/mnt_kc-cf-auth:/mnt/kc-cf-auth:ro
+      - ./mounts/cf-auth-sim:/mnt/docker:ro
+      - ./mounts/cf-auth-sim/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
     command: >
       sh -c "
         luarocks install lua-resty-rsa &&
@@ -64,7 +67,3 @@ services:
         luarocks install lua-resty-openssl &&
         /usr/local/openresty/bin/openresty -g 'daemon off;'
       "
-
-
-volumes:
-  keycloak-providers:

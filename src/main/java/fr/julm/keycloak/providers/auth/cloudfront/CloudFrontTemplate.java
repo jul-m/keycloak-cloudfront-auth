@@ -13,7 +13,8 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.services.util.CacheControlUtil;
 import org.keycloak.theme.Theme;
-import org.keycloak.theme.beans.MessageFormatterMethod;
+import freemarker.template.TemplateMethodModelEx;
+import freemarker.template.TemplateModelException;
 
 import freemarker.template.Configuration;
 import freemarker.template.Template;
@@ -28,7 +29,7 @@ public class CloudFrontTemplate {
     private static final ClassLoader classLoader = CloudFrontTemplate.class.getClassLoader();
     private static final Properties providerMessages = new Properties();
     private static final Configuration cfgClassLoader = new Configuration(Configuration.VERSION_2_3_32);
-    private static final Map<String, MessageFormatterMethod> messageFormattersCache = new ConcurrentHashMap<>();
+    private static final Map<String, TemplateMethodModelEx> messageFormattersCache = new ConcurrentHashMap<>();
     private static final Map<String, UrlBean> urlBeansCache = new ConcurrentHashMap<>();
 
     private Template template;
@@ -39,7 +40,8 @@ public class CloudFrontTemplate {
         cfgClassLoader.setClassLoaderForTemplateLoading(classLoader, "/html");
         try {
             providerMessages.load(classLoader.getResourceAsStream("messages/messages_en.properties"));
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             logger.errorf("Error loading messages from properties file", e);
             throw new RuntimeException("Error loading messages from properties file", e);
         }
@@ -48,7 +50,8 @@ public class CloudFrontTemplate {
     public CloudFrontTemplate(String templateName) {
         try {
             this.template = cfgClassLoader.getTemplate(templateName);
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             logger.errorf("Error loading template %s", templateName, e);
             throw new RuntimeException("Error loading template " + templateName, e);
         }
@@ -58,14 +61,30 @@ public class CloudFrontTemplate {
         return realm.getId() + ":" + theme.getName() + ":" + locale.toString();
     }
 
-    private MessageFormatterMethod getMessageFormatter(Theme theme, Locale locale) {
+    private TemplateMethodModelEx getMessageFormatter(Theme theme, Locale locale) {
         String cacheKey = theme.getName() + ":" + locale.toString();
         return messageFormattersCache.computeIfAbsent(cacheKey, k -> {
             try {
                 Properties messages = theme.getMessages(locale);
-                messages.putAll(providerMessages); // Add provider specific messages
-                return new MessageFormatterMethod(locale, messages);
-            } catch (IOException e) {
+                // Merge provider specific messages
+                messages.putAll(providerMessages);
+
+                // Return a simple Freemarker method that looks up messages by key
+                // and returns the raw string value (preserving apostrophes and
+                // avoiding MessageFormat processing which can remove single quotes).
+                return new TemplateMethodModelEx() {
+                    @Override
+                    public Object exec(java.util.List args) throws TemplateModelException {
+                        if (args == null || args.isEmpty()) return "";
+                        Object first = args.get(0);
+                        if (first == null) return "";
+                        String key = first.toString();
+                        String v = messages.getProperty(key);
+                        return v == null ? key : v;
+                    }
+                };
+            }
+            catch (IOException e) {
                 logger.error("Error loading messages for theme: " + theme.getName() + " and locale: " + locale, e);
                 throw new RuntimeException("Error loading messages", e);
             }

@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Resolve repository root so script can be run from any cwd
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT" || exit 1
+
 # Available Keycloak versions (major.minor)
 KEYCLOAK_VERSIONS=("25.0" "26.0" "26.1" "26.2" "26.3")
 

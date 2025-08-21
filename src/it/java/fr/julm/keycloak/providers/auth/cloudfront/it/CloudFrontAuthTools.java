@@ -60,7 +60,9 @@ public final class CloudFrontAuthTools {
      * @param cookieSignature valeur du cookie CloudFront-Signature (base64url)
      * @return Result avec le statut des différentes vérifications
      */
-    public static Result checkCloudFrontSignedCookies(PublicKey publicKey, String cookiePolicy, String cookieKeyPairId, String cookieSignature) {
+    public static Result checkCloudFrontSignedCookies(
+        PublicKey publicKey, String cookiePolicy, String cookieKeyPairId, String cookieSignature
+    ) {
         Result r = new Result();
 
         if (publicKey == null) {
@@ -71,12 +73,14 @@ public final class CloudFrontAuthTools {
             return r;
         }
 
-    if (cookiePolicy == null || cookieKeyPairId == null || cookieSignature == null) {
+        if (cookiePolicy == null || cookieKeyPairId == null || cookieSignature == null) {
             r.isAuthenticated = false;
             r.signatureValid = false;
             r.error = "Missing one or more required cookies";
-        LOGGER.warning("checkCloudFrontSignedCookies: missing cookie(s) - policy=" + (cookiePolicy!=null) +
-            " keyPairId=" + (cookieKeyPairId!=null) + " signature=" + (cookieSignature!=null));
+
+            LOGGER.warning(
+                "checkCloudFrontSignedCookies: missing cookie(s) - policy=" + (cookiePolicy!=null) +
+                " keyPairId=" + (cookieKeyPairId!=null) + " signature=" + (cookieSignature!=null));
             return r;
         }
 
@@ -100,7 +104,8 @@ public final class CloudFrontAuthTools {
             r.expirationEpoch = epoch;
             r.expired = now >= epoch;
             if (r.expired) {
-                LOGGER.warning("checkCloudFrontSignedCookies: policy expired (expirationEpoch=" + r.expirationEpoch + ")");
+                LOGGER.warning(
+                    "checkCloudFrontSignedCookies: policy expired (expirationEpoch=" + r.expirationEpoch + ")");
             }
         } else {
             r.expirationEpoch = null;
@@ -112,15 +117,18 @@ public final class CloudFrontAuthTools {
         // Vérifier signature
         r.signatureValid = checkCloudFrontSignature(publicKey, policy, cookieSignature);
         if (!r.signatureValid) {
-            LOGGER.warning("checkCloudFrontSignedCookies: signature verification failed (policy length=" + (policy==null?0:policy.length()) + ")");
+            LOGGER.warning(
+                "checkCloudFrontSignedCookies: signature verification failed (policy length=" + 
+                (policy==null?0:policy.length()) + ")");
         }
 
         // Vérifier Key-Pair-Id si variable d'env attendue définie (utilise la constante de test)
-        String expectedKeyPairId = CloudFrontAuthExtensionIT.CF_SIGN_KEY_ID;
+        String expectedKeyPairId = ITEnvConfig.CF_SIGN_KEY_ID;
         if (expectedKeyPairId != null && !expectedKeyPairId.isEmpty()) {
             r.keyPairIdMatch = expectedKeyPairId.equals(cookieKeyPairId);
             if (!r.keyPairIdMatch) {
-                LOGGER.warning("checkCloudFrontSignedCookies: keyPairId mismatch, expected='" + expectedKeyPairId + "' got='" + cookieKeyPairId + "'");
+                LOGGER.warning("checkCloudFrontSignedCookies: keyPairId mismatch, expected='" + 
+                expectedKeyPairId + "' got='" + cookieKeyPairId + "'");
             }
         } else {
             r.keyPairIdMatch = null; // indéterminé
@@ -133,7 +141,8 @@ public final class CloudFrontAuthTools {
         // Construire message d'erreur agrégé
         if (!r.signatureValid) r.error = (r.error == null ? "Invalid signature" : r.error + "; Invalid signature");
         if (r.expired) r.error = (r.error == null ? "Policy expired" : r.error + "; Policy expired");
-        if (r.keyPairIdMatch != null && !r.keyPairIdMatch) r.error = (r.error == null ? "KeyPairId mismatch" : r.error + "; KeyPairId mismatch");
+        if (r.keyPairIdMatch != null && !r.keyPairIdMatch) r.error = (
+            r.error == null ? "KeyPairId mismatch" : r.error + "; KeyPairId mismatch");
 
         return r;
     }
@@ -162,7 +171,9 @@ public final class CloudFrontAuthTools {
 
         // Map URL-safe variants to the server-side custom mapping used in Lua:
         // '-' -> '+' , '_' -> '=' , '~' -> '/'
-        String std = t.replace('-', '+').replace('_', '=').replace('~', '/');
+        String std = t.replace('-', '+')
+            .replace('_', '=')
+            .replace('~', '/');
 
         // Ensure padding for standard form
         int rem = std.length() % 4;
@@ -174,15 +185,18 @@ public final class CloudFrontAuthTools {
         try {
             return Base64.getDecoder().decode(std);
         } catch (IllegalArgumentException e) {
-            LOGGER.warning("decodeBase64Url: invalid base64 content (len=" + (original==null?0:original.length()) + ") snippet='" + (original.length()>60?original.substring(0,60):original) + "'");
+            LOGGER.warning("decodeBase64Url: invalid base64 content (len=" + 
+                (original==null?0:original.length()) + ") snippet='" + 
+                (original.length()>60?original.substring(0,60):original) + "'");
             return null;
         }
     }
 
     private static Long extractEpochTime(String policyJson) {
         if (policyJson == null) return null;
-    // Cherche "AWS:EpochTime": 1234567890
-    Pattern p = Pattern.compile("\\\"AWS:EpochTime\\\"\\s*:\\s*(\\d+)");
+        
+        // Cherche "AWS:EpochTime": 1234567890
+        Pattern p = Pattern.compile("\\\"AWS:EpochTime\\\"\\s*:\\s*(\\d+)");
         Matcher m = p.matcher(policyJson);
         if (m.find()) {
             try {

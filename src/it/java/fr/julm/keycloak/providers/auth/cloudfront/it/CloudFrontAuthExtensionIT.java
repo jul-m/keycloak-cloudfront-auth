@@ -3,38 +3,20 @@ package fr.julm.keycloak.providers.auth.cloudfront.it;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.*;
 
+import fr.julm.keycloak.providers.auth.cloudfront.CloudFrontAuthProviderConfig;
 import io.restassured.response.Response;
-import java.io.IOException;
-import java.io.InputStream;
+import io.restassured.specification.RequestSpecification;
+import java.io.*;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.nio.file.*;
+import java.security.*;
+import java.util.*;
+import java.util.regex.*;
 import java.util.stream.Collectors;
-
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.keycloak.representations.idm.ComponentTypeRepresentation;
-import org.keycloak.representations.idm.ProtocolMapperTypeRepresentation;
-import org.keycloak.representations.info.ProviderRepresentation;
-import org.keycloak.representations.info.ServerInfoRepresentation;
-
-import fr.julm.keycloak.providers.auth.cloudfront.CloudFrontAuthProviderConfig;
-
-import java.io.ByteArrayInputStream;
-import java.security.PublicKey;
-import java.security.KeyFactory;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
-import org.keycloak.representations.idm.KeysMetadataRepresentation;
+import org.junit.jupiter.api.*;
+import org.keycloak.representations.idm.*;
+import org.keycloak.representations.info.*;
 
 // JSON parsing is done via simple regex here to avoid adding a dependency on Gson
 
@@ -88,7 +70,7 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
                 "Version in operational info should match with build-name property.");
         }
 
-        DEFAULT_CONFIG_MAP.forEach((key, expectedValue) -> {
+        ITEnvConfig.PROVIDER_CFG.forEach((key, expectedValue) -> {
             assertEquals(expectedValue, operationalInfo.get(key), key + " should match");
         }); 
 
@@ -149,11 +131,11 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
     @Test
     @DisplayName("Redirect endpoint returns 200 with correct HTML for valid client credentials")
     void testRedirectValidClientCredentialsHtml() throws IOException {
-        Response response = given()
-                .header("kc-realm-name", REALM_NAME)
-                .header("kc-client-id", CLIENT_ID)
-                .header("kc-client-secret", CLIENT_SECRET)
-                .header("kc-cf-sign-key-id", CF_SIGN_KEY_ID)
+    Response response = given()
+        .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+        .header("kc-client-id", ITEnvConfig.CLIENT_ID)
+        .header("kc-client-secret", ITEnvConfig.CLIENT_SECRET)
+        .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
                 .when().get(CF_REDIRECT_403_URI)
                 .then().statusCode(200)
                 .extract().response();
@@ -167,26 +149,26 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
         // Load msg from properties file
         Properties msg = new Properties();
         try (InputStream input = Files.newInputStream(
-            Paths.get("src/main/resources/messages/messages_"+ LANG +".properties"))) {
+            Paths.get("src/main/resources/messages/messages_"+ ITEnvConfig.LANG +".properties"))) {
                 msg.load(input);
         }
 
         // Construct the auth URL in a readable format
-        String redirectUri = URLEncoder.encode(HOME_URL + "/.cdn-auth/callback", StandardCharsets.UTF_8);
-        String authUrl = keycloakBaseUrl + "/realms/" + REALM_NAME + "/protocol/openid-connect/auth" +
-                "?client_id=" + CLIENT_ID +
-                "&response_type=code" +
-                "&redirect_uri=" + redirectUri +
-                "&scope=openid";
+        String redirectUri = URLEncoder.encode(ITEnvConfig.HOME_URL + "/.cdn-auth/callback", StandardCharsets.UTF_8);
+        String authUrl = keycloakBaseUrl + "/realms/" + ITEnvConfig.REALM_NAME + "/protocol/openid-connect/auth" +
+            "?client_id=" + ITEnvConfig.CLIENT_ID +
+                    "&response_type=code" +
+                    "&redirect_uri=" + redirectUri +
+                    "&scope=openid";
 
         // Replace variables in the template using msg
         String expectedHtml = templateContent
             .replace("${msg(\"redirectToAuthService\")}", msg.getProperty("redirectToAuthService"))
-            .replace("${redirectFallbackDelay}", DEFAULT_CONFIG_MAP.get("Redirect Fallback Delay"))
+            .replace("${redirectFallbackDelay}", ITEnvConfig.PROVIDER_CFG.get("Redirect Fallback Delay"))
             .replace("${authUrl}", authUrl)
             .replace("${msg(\"clickHereIfNoRedirect\")}", msg.getProperty("clickHereIfNoRedirect"))
             .replace("${redirectUriPath}", CloudFrontAuthProviderConfig.REDIRECT_URI_PATH)
-            .replace("${redirectDelay}", DEFAULT_CONFIG_MAP.get("Redirect Delay"))
+            .replace("${redirectDelay}", ITEnvConfig.PROVIDER_CFG.get("Redirect Delay"))
             .replace("${msg(\"javascriptDisabledWarning\")}", msg.getProperty("javascriptDisabledWarning"));
 
         assertEquals(expectedHtml.trim(), responseBody.trim(), "HTML response should match expected content");
@@ -205,10 +187,10 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
     @DisplayName("Redirect endpoint returns 401 for invalid client credentials")
     void testRedirectInvalidClientCredentials() {
         given()
-            .header("kc-realm-name", REALM_NAME)
-            .header("kc-client-id", CLIENT_ID)
+            .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+            .header("kc-client-id", ITEnvConfig.CLIENT_ID)
             .header("kc-client-secret", "WrongSecret")
-            .header("kc-cf-sign-key-id", CF_SIGN_KEY_ID)
+            .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
             .when().get(CF_REDIRECT_403_URI)
             .then().statusCode(401)
             .extract().response();
@@ -220,10 +202,10 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
     @DisplayName("Callback endpoint returns 400 when 'code' query param is missing")
     void testCallbackMissingCode() {
         given()
-            .header("kc-realm-name", REALM_NAME)
-            .header("kc-client-id", CLIENT_ID)
-            .header("kc-client-secret", CLIENT_SECRET)
-            .header("kc-cf-sign-key-id", CF_SIGN_KEY_ID)
+            .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+            .header("kc-client-id", ITEnvConfig.CLIENT_ID)
+            .header("kc-client-secret", ITEnvConfig.CLIENT_SECRET)
+            .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
             .when().get(CALLBACK_URI)
             .then().statusCode(400)
             .extract().response();
@@ -233,13 +215,13 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
     @DisplayName("Callback endpoint returns 401 when 'code' query param is invalid")
     void testCallbackInvalidCode() {
         given()
-            .header("kc-realm-name", REALM_NAME)
-            .header("kc-client-id", CLIENT_ID)
-            .header("kc-client-secret", CLIENT_SECRET)
-            .header("kc-cf-sign-key-id", CF_SIGN_KEY_ID)
-            .queryParam("original_uri", HOME_URL + "/")
+            .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+            .header("kc-client-id", ITEnvConfig.CLIENT_ID)
+            .header("kc-client-secret", ITEnvConfig.CLIENT_SECRET)
+            .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
+            .queryParam("original_uri", ITEnvConfig.HOME_URL + "/")
             .queryParam("session_state", UUID.randomUUID().toString())
-            .queryParam("iss", keycloakBaseUrl + "/realms/" + REALM_NAME)
+            .queryParam("iss", keycloakBaseUrl + "/realms/" + ITEnvConfig.REALM_NAME)
             .queryParam("code", "invalid_code")
             .redirects().follow(false)
             .when().get(CALLBACK_URI)
@@ -251,38 +233,41 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
     @DisplayName("Simulate successful authentication using Keycloak tools")
     void testSuccessfulAuthenticationWithKeycloakTools() throws IOException, java.security.cert.CertificateException {
         String authorizationCode = KeycloakTestsTools.obtainAuthorizationCode(
-            keycloakBaseUrl, REALM_NAME, HOME_URL, CLIENT_ID, USER_USERNAME_OK, USER_PASSWORD);
+            keycloakBaseUrl, ITEnvConfig.REALM_NAME, ITEnvConfig.HOME_URL, ITEnvConfig.CLIENT_ID,
+            ITEnvConfig.USER_USERNAME_OK, ITEnvConfig.USER_PASSWORD
+        );
         assertNotNull(authorizationCode, "Authorization code should not be null");
 
         // Call the callback endpoint with the obtained code and validate CloudFront cookies are set
         Response callbackResponse = given()
-                                    .header("kc-realm-name", REALM_NAME)
-                                    .header("kc-client-id", CLIENT_ID)
-                                    .header("kc-client-secret", CLIENT_SECRET)
-                                    .header("kc-cf-sign-key-id", CF_SIGN_KEY_ID)
-                                    .queryParam("original_uri", HOME_URL + "/")
-                                    .queryParam("session_state", UUID.randomUUID().toString())
-                                    .queryParam("iss", keycloakBaseUrl + "/realms/" + REALM_NAME)
-                                    .queryParam("code", authorizationCode)
-                                    .redirects().follow(false)
-                                    .when().get(CALLBACK_URI)
-                                    .then().statusCode(302)
-                                    .extract().response();
+                    .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+                    .header("kc-client-id", ITEnvConfig.CLIENT_ID)
+                    .header("kc-client-secret", ITEnvConfig.CLIENT_SECRET)
+                    .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
+                    .queryParam("original_uri", ITEnvConfig.HOME_URL + "/")
+                    .queryParam("session_state", UUID.randomUUID().toString())
+                    .queryParam("iss", keycloakBaseUrl + "/realms/" + ITEnvConfig.REALM_NAME)
+                    .queryParam("code", authorizationCode)
+                    .redirects().follow(false)
+                    .when().get(CALLBACK_URI)
+                    .then().statusCode(302)
+                    .extract().response();
 
         List<String> setCookies = callbackResponse.getHeaders().getValues("Set-Cookie");
         assertNotNull(setCookies);
+
         String combinedCookies = String.join("; ", setCookies);
         assertTrue(combinedCookies.contains("CloudFront-Policy"));
         assertTrue(combinedCookies.contains("CloudFront-Signature"));
         assertTrue(combinedCookies.contains("CloudFront-Key-Pair-Id"));
 
-        getAdminClient().realm(REALM_NAME).keys().getKeyMetadata().getKeys();
-        // Extract individual cookie values
+        getAdminClient().realm(ITEnvConfig.REALM_NAME).keys().getKeyMetadata().getKeys();
         String policyCookie = null;
         String signatureCookie = null;
         String keyPairIdCookie = null;
         Pattern cookiePattern = Pattern.compile(
             "(CloudFront-Policy|CloudFront-Signature|CloudFront-Key-Pair-Id)=([^;]+)");
+        
         for (String sc : setCookies) {
             Matcher m = cookiePattern.matcher(sc);
             while (m.find()) {
@@ -300,44 +285,13 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
         assertNotNull(signatureCookie, "Signature cookie should be present");
         assertNotNull(keyPairIdCookie, "Key-Pair-Id cookie should be present");
 
-        // Retrieve key metadata via admin client and extract certificate
-        KeysMetadataRepresentation keyMetadata = getAdminClient().realm(REALM_NAME).keys().getKeyMetadata();
+        // Retrieve key metadata via admin client and extract certificate using utility
+        KeysMetadataRepresentation keyMetadata = getAdminClient().realm(ITEnvConfig.REALM_NAME).keys().getKeyMetadata();
         PublicKey publicKey = null;
-        if (keyMetadata != null && keyMetadata.getKeys() != null) {
-            for (KeysMetadataRepresentation.KeyMetadataRepresentation k : keyMetadata.getKeys()) {
-                if (k == null) continue;
-                // Prefer ACTIVE RSA keys with algorithm RS256
-                String status = k.getStatus();
-                String algorithm = k.getAlgorithm();
-                String ktype = k.getType();
-                if (status != null && "ACTIVE".equalsIgnoreCase(status)
-                    && algorithm != null && "RS256".equalsIgnoreCase(algorithm)
-                    && ktype != null && "RSA".equalsIgnoreCase(ktype)) {
-                    try {
-                        String certB64 = k.getCertificate();
-                        if (certB64 != null && !certB64.isEmpty()) {
-                            // certificate is provided as base64 DER (no PEM headers)
-                            byte[] certBytes = Base64.getDecoder().decode(certB64);
-                            CertificateFactory cf = CertificateFactory.getInstance("X.509");
-                            X509Certificate x509 = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(certBytes));
-                            publicKey = x509.getPublicKey();
-                            break;
-                        }
-
-                        // Fallback to publicKey field (base64 encoded X.509 SubjectPublicKeyInfo)
-                        String pubB64 = k.getPublicKey();
-                        if (pubB64 != null && !pubB64.isEmpty()) {
-                            byte[] pubBytes = Base64.getDecoder().decode(pubB64);
-                            X509EncodedKeySpec spec = new X509EncodedKeySpec(pubBytes);
-                            KeyFactory kf = KeyFactory.getInstance("RSA");
-                            publicKey = kf.generatePublic(spec);
-                            break;
-                        }
-                    } catch (Exception e) {
-                        fail("Failed to extract public key from key metadata: " + e.getMessage());
-                    }
-                }
-            }
+        try {
+            publicKey = KeycloakTestsTools.getActiveRSAPublicKey(keyMetadata);
+        } catch (Exception e) {
+            fail("Failed to extract public key from key metadata: " + e.getMessage());
         }
 
         assertNotNull(publicKey, "Public key should be extracted from realm key metadata certificate");
@@ -352,21 +306,83 @@ public class CloudFrontAuthExtensionIT extends AbstractKeycloakIntegrationTest {
     }
 
     @Test
+    @DisplayName("Loop detection: callback increments loop cookie and triggers error at threshold")
+    void testLoopDetectionOnCallback() throws Exception {
+        String cookieHeader = null;
+        Pattern loopPattern = Pattern.compile("cloudfront_auth_loop=([0-9]+)");
+
+        // Perform 10 consecutive successful callback flows, passing the loop cookie between calls
+        for (int i = 1; i <= 10; i++) {
+            String authorizationCode = KeycloakTestsTools.obtainAuthorizationCode(
+                keycloakBaseUrl, ITEnvConfig.REALM_NAME, ITEnvConfig.HOME_URL, ITEnvConfig.CLIENT_ID,
+                ITEnvConfig.USER_USERNAME_OK, ITEnvConfig.USER_PASSWORD);
+            assertNotNull(authorizationCode, "Authorization code should not be null (iteration=" + i + ")");
+
+            RequestSpecification req = given()
+                .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+                .header("kc-client-id", ITEnvConfig.CLIENT_ID)
+                .header("kc-client-secret", ITEnvConfig.CLIENT_SECRET)
+                .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
+                .queryParam("original_uri", ITEnvConfig.HOME_URL + "/")
+                .queryParam("session_state", UUID.randomUUID().toString())
+                .queryParam("iss", keycloakBaseUrl + "/realms/" + ITEnvConfig.REALM_NAME)
+                .queryParam("code", authorizationCode)
+                .redirects().follow(false);
+
+            if (cookieHeader != null) {
+                req.header("Cookie", cookieHeader);
+            }
+
+            Response callbackResponse = req.when().get(CALLBACK_URI).andReturn();
+            if (i < 10) {
+                assertEquals(
+                    302, callbackResponse.getStatusCode(), "Expected 302 before threshold (i=" + i + ")");
+            } else {
+                assertEquals(
+                    310, callbackResponse.getStatusCode(), "Expected 310 at threshold (i=" + i + ")");
+            }
+
+            // Extract updated loop cookie from Set-Cookie headers
+            List<String> setCookies = callbackResponse.getHeaders().getValues("Set-Cookie");
+            assertNotNull(setCookies, "Set-Cookie headers should be present (i=" + i + ")");
+
+            String loopSet = null;
+            for (String sc : setCookies) {
+                Matcher m = loopPattern.matcher(sc);
+                if (m.find()) {
+                    loopSet = m.group(0);
+                    break;
+                }
+            }
+            assertNotNull(loopSet, "Loop Set-Cookie should be present after callback (i=" + i + ")");
+
+            // prepare Cookie header for next iteration
+            Matcher mv = loopPattern.matcher(loopSet);
+            if (mv.find()) {
+                cookieHeader = "cloudfront_auth_loop=" + mv.group(1);
+            } else {
+                cookieHeader = null;
+            }
+        }
+    }
+
+    @Test
     @DisplayName("Try get signed cookies with user without required role")
     void testGetSignedCookiesWithUserWithoutRequiredRole() throws IOException {
         // Get authorization code for user without required role
         String authorizationCode = KeycloakTestsTools.obtainAuthorizationCode(
-            keycloakBaseUrl, REALM_NAME, HOME_URL, CLIENT_ID, USER_USERNAME_INVALID, USER_PASSWORD);
+            keycloakBaseUrl, ITEnvConfig.REALM_NAME, ITEnvConfig.HOME_URL, ITEnvConfig.CLIENT_ID,
+            ITEnvConfig.USER_USERNAME_INVALID, ITEnvConfig.USER_PASSWORD);
         assertNotNull(authorizationCode, "Authorization code should not be null");
 
         given()
-            .header("kc-realm-name", REALM_NAME)
-            .header("kc-client-id", CLIENT_ID)
-            .header("kc-client-secret", CLIENT_SECRET)
-            .header("kc-cf-sign-key-id", CF_SIGN_KEY_ID)
-            .queryParam("original_uri", HOME_URL + "/")
+            .header("kc-realm-name", ITEnvConfig.REALM_NAME)
+            .header("kc-client-id", ITEnvConfig.CLIENT_ID)
+            .header("kc-client-secret", ITEnvConfig.CLIENT_SECRET)
+            .header("kc-cf-sign-key-id", ITEnvConfig.CF_SIGN_KEY_ID)
+            .queryParam("original_uri", ITEnvConfig.HOME_URL + "/")
             .queryParam("session_state", UUID.randomUUID().toString())
-            .queryParam("iss", keycloakBaseUrl + "/realms/" + REALM_NAME)
+            .queryParam("iss", keycloakBaseUrl + "/realms/" + ITEnvConfig.REALM_NAME)
             .queryParam("code", authorizationCode)
             .redirects().follow(false)
             .when().get(CALLBACK_URI)

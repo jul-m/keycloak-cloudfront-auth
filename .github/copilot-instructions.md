@@ -1,79 +1,42 @@
-# Keycloak CloudFront Authentication Extension - Copilot Instructions
+## But court — instructions pour un agent de codage
 
-Chat with me in French, but code in English.
+Écrire en français, code en anglais. Ce fichier résume l'essentiel pour être productif sur ce dépôt.
 
-## Architecture Overview
+1) Big picture (flow)
+- CloudFront redirige les 403 vers /.cdn-auth/_cf_redirect_403.
+- `CloudFrontAuthResource` (JAX-RS) rend une page FreeMarker qui redirige vers Keycloak.
+- Après login Keycloak, `/.cdn-auth/callback` valide le code, crée un AccessToken et appelle `CloudFrontCookieSigner.generateSignedCookies` pour émettre les cookies CloudFront signés.
 
-This Keycloak extension replaces AWS Lambda@Edge with a server-side solution for CloudFront authentication. The authentication flow:
+2) Fichiers clés à lire (rapide)
+- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/CloudFrontAuthResource.java` — endpoints, gestion du flux OAuth2, détection de boucle (cookie `cloudfront_auth_loop`).
+- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/CloudFrontCookieSigner.java` — génération des cookies signés, cache des clés via ConcurrentHashMap, utilise `session.keys()` pour récupérer la clé active RS256.
+- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/*ProviderFactory.java` — enregistrement SPI.
+- `src/main/resources/html/*.ftl` — templates utilisateur (redirect.ftl, error.ftl).
+- `src/main/resources/META-INF/services/*` et `target/classes/META-INF/services/*` — enregistrement des services SPI.
 
-1. **Unauthorized access attempt** → CloudFront redirects to `/.cdn-auth/_cf_redirect_403`
-2. **Auth redirect** → Extension generates HTML redirect page to Keycloak OpenID
-3. **Post-authentication** → Callback to `/.cdn-auth/callback` generates signed CloudFront cookies
-4. **Authorized access** → User redirected with valid CloudFront cookies
+3) Commandes de build & dev utiles
+- Compiler jar: `mvn clean package` (ou `./build.sh` qui gère versions Keycloak et suffixes).
+- Artefact: `target/keycloak-cloudfront-auth-*KC<version>*.jar` (le script `build.sh` recherche ce motif).
+- Intégration rapide: `cd testing/docker && docker-compose up` (installe automatiquement le provider depuis mounts/configurator/providers).
+- Tests d'intégration: `./test-integration.sh` (présent dans la racine / scripts selon usage).
 
-## Key Components
+4) Conventions runtime & sécurité
+- La clé privée CloudFront doit rester hors logs: variable d'environnement `CLOUDFRONT_PRIVATE_KEY` (PEM).
+- SPI options: `spi-realm-restapi-extension-cloudfront-auth-*` ou variables `KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_*`.
+- En-têtes obligatoires envoyés par CloudFront vers Keycloak: `kc-realm-name`, `kc-client-id`, `kc-client-secret`, `kc-cf-sign-key-id` (nom observé dans le code).
 
-### Keycloak Providers (SPI)
-- `CloudFrontAuthResourceProviderFactory`: Main entry point (ID: `cloudfront-auth`)
-- `CloudFrontAuthResource`: REST endpoints (`/.cdn-auth/*`)
-- `CloudFrontCookieSigner`: Generates signed cookies with CloudFront private key
-- `CloudFrontAuthConfigMapper`: Protocol mapper for client configuration
+5) Patterns et pièges spécifiques
+- Les factories SPI sont détectées via `META-INF/services` — modifier/ajouter les fichiers correspondants pour que Keycloak charge la SPI.
+- Les FreeMarker `.ftl` sont la surface UI; évitez de modifier la logique d'URL dans `CloudFrontAuthResource` sans mettre à jour les templates.
+- `CloudFrontCookieSigner` met les clés de signature en cache par `RealmModel` — si vous changez la façon dont les clés sont gérées, ajoutez invalidation/rotation.
+- Le script `scripts/build.sh` supporte des builds multi-versions Keycloak (voir liste KEYCLOAK_VERSIONS dans le script).
 
-### Runtime Configuration
-Configuration via `conf/keycloak.conf` with namespace `spi-realm-restapi-extension-cloudfront-auth-*`:
-```properties
-spi-realm-restapi-extension-cloudfront-auth-redirect-delay=0
-spi-realm-restapi-extension-cloudfront-auth-access-roles=cloudfront-access,webapp-access
-```
+6) Intégration CloudFront (rappels concrets)
+- Créer un behavior pour `/.cdn-auth/*` (no-cache) et un Custom Error Response 403 -> `/.cdn-auth/_cf_redirect_403` (HTTP 200 rendu).
+- CloudFront public key RS256 doit correspondre à la clé publique du Realm Keycloak; l'ID de clé publique est fourni via `kc-cf-sign-key-id`.
 
-## Development Patterns
+7) Debug rapide
+- Activer logs pour `fr.julm.keycloak.providers.auth.cloudfront` (voir `src/main/resources/logging.properties`).
+- Option SPI `display-request-id` active l'affichage de l'ID de requête dans la page d'erreur (utile pour corréler les logs).
 
-### Build & Packaging
-```bash
-mvn clean package  # Generates keycloak-cloudfront-auth-0.1.0-KC26-SNAPSHOT.jar
-```
-JAR deployed to `/opt/keycloak/providers/` with dynamic versioning based on `keycloak.major-version`
-
-### Docker Testing
-```bash
-cd testing/docker && docker-compose up
-```
-- Keycloak on port 8080 with extension auto-installed
-- `keycloak-providers` volume for hot-reload during development
-- `configurator/scripts/configure.sh` script for automatic setup
-
-### Security Model
-- **Required CloudFront headers**: `kc-realm-name`, `kc-client-id`, `kc-client-secret`, `cf-sign-key-id`
-- **CloudFront private key**: Environment variable `CLOUDFRONT_PRIVATE_KEY` (PEM format)
-- **Token validation**: Via Keycloak `TokenManager` with configured role verification
-
-## Codebase Conventions
-
-### Service Structure
-- **Factory Pattern**: All providers implement `*ProviderFactory` for SPI injection
-- **FreeMarker Templates**: `src/main/resources/html/*.ftl` for redirect/error pages
-- **Key Caching**: `ConcurrentHashMap` in `CloudFrontCookieSigner` for performance
-
-### Error Handling
-- FreeMarker templates for user display (`error.ftl`, `redirect.ftl`)
-- JBoss Logger with configurable level per `fr.julm` package
-- Optional request ID for debugging (`display-request-id` config)
-
-### Extension Points
-- New endpoints: Extend `CloudFrontAuthResource` with JAX-RS annotations
-- Configuration: Add properties to `CloudFrontAuthProviderConfig`
-- Protocol mappers: Implement `org.keycloak.protocol.ProtocolMapper`
-
-## External Integrations
-
-### AWS CloudFront
-- Distribution must have configured Keycloak origin
-- Behavior `/.cdn-auth/*` → Keycloak origin, cache disabled
-- Trusted Key Groups with RS256 public key from Keycloak Realm
-- Error page 403 → `/.cdn-auth/_cf_redirect_403`
-
-### Common Debugging
-- Verify CloudFront headers in Keycloak logs
-- CloudFront private key must be valid PEM format
-- Public key match between Realm ↔ CloudFront Key Group
-- User roles included in configured `access-roles`
+Si un point manque (par ex. format exact d'une variable d'environnement non trouvée dans le repo), indiquez-le et j'itérerai la fiche.

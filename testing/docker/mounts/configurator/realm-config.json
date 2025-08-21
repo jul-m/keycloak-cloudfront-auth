@@ -1,26 +1,24 @@
 {
-  "realm": "cloudfront-test",
+  "realm": "$(env:KCA_KC_REALM_NAME)",
   "enabled": true,
-  "displayName": "CloudFront Test Realm",
   "accessTokenLifespan": 3600,
-  "refreshTokenMaxReuse": 0,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "clients": [
     {
-      "clientId": "cloudfront-test-client",
+      "clientId": "$(env:KCA_KC_CLIENT_ID)",
       "enabled": true,
-      "secret": "TestSecret123",
+      "secret": "$(env:KCA_KC_CLIENT_SECRET)",
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "publicClient": false,
       "protocol": "openid-connect",
-      "rootUrl": "http://localhost:8081",
-      "baseUrl": "http://localhost:8081",
+      "rootUrl": "http://localhost:$(env:KCA_OPENRESTY_HOST_PORT)",
+      "baseUrl": "http://localhost:$(env:KCA_OPENRESTY_HOST_PORT)",
       "redirectUris": [
-        "http://localhost:8081/.cdn-auth/callback/*"
+        "http://localhost:$(env:KCA_OPENRESTY_HOST_PORT)/.cdn-auth/callback/*"
       ],
       "protocolMappers": [
         {

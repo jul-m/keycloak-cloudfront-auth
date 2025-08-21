@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,13 +13,14 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            background: #f6f8fa;
         }
         .container { 
             max-width: 650px; 
             background: white; 
             padding: 40px; 
             border-radius: 12px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             text-align: center;
         }
         .error-code {
@@ -80,9 +81,6 @@
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0,123,255,0.3);
         }
-        .btn-secondary:hover {
-            box-shadow: 0 5px 15px rgba(108,117,125,0.3);
-        }
         .countdown {
             font-weight: bold;
             color: #007bff;
@@ -120,31 +118,31 @@
         <h1>{{ERROR_TITLE}}</h1>
         
         <div class="message">
-            <strong>🚨 Problème détecté :</strong><br>
+            <strong>⚠️ Issue detected:</strong><br>
             {{ERROR_DESCRIPTION}}
         </div>
 
         <div class="tech-details">
-            <strong>🔧 Informations techniques :</strong><br>
+            <strong>🔧 Technical information:</strong><br>
             {{TECHNICAL_INFO}}
         </div>
 
         <div class="retry-info">
-            🔄 Rechargement automatique dans <span id="countdown" class="countdown">30</span> secondes.
+            🔄 Automatic reload in <span id="countdown" class="countdown">30</span> seconds.
             <div class="actions">
                 <button onclick="window.location.reload()" class="btn">
-                    🔄 Recharger Maintenant
+                    🔄 Reload Now
                 </button>
             </div>                
         </div>
         
         <div class="timestamp">
-            Générée le <span id="timestamp"></span>
+            Generated on <span id="timestamp"></span>
         </div>
     </div>
 
     <script>
-        document.getElementById('timestamp').textContent = new Date().toLocaleString('fr-FR');
+        document.getElementById('timestamp').textContent = new Date().toLocaleString();
     </script>
 </body>
 </html>

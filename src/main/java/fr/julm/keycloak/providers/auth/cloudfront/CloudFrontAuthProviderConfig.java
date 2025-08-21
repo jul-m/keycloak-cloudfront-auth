@@ -1,7 +1,9 @@
 package fr.julm.keycloak.providers.auth.cloudfront;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
@@ -31,10 +33,6 @@ public class CloudFrontAuthProviderConfig {
     // spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes
     private static final String CONF_AUTH_COOKIES_ATTRIBUTES_NAME = "authCookiesAttributes";
     private static final String CONF_AUTH_COOKIES_ATTRIBUTES_DEFAULT = "Path=/; Secure; HttpOnly";
-
-    // spi-realm-restapi-extension-cloudfront-auth-secret-key
-    private static final String CONF_SECRET_KEY_NAME = "secretKey";
-    private static final String CONF_SECRET_KEY_DEFAULT = "";
     
     // LOADED CONFIG
     private static Integer redirectDelay = CONF_REDIRECT_DELAY_DEFAULT;
@@ -42,7 +40,7 @@ public class CloudFrontAuthProviderConfig {
     private static Boolean displayRequestId = CONF_DISPLAY_REQUEST_ID_DEFAULT;
     private static List<String> accessRoles = CONF_ACCESS_ROLES_DEFAULT_LIST;
     private static String authCookiesAttributes = CONF_AUTH_COOKIES_ATTRIBUTES_DEFAULT;
-    private static String secretKey = CONF_SECRET_KEY_DEFAULT;
+    private static Map<String, String> allConfigsMap = null;
 
     private static final Logger logger = Logger.getLogger(CloudFrontAuthProviderConfig.class);
 
@@ -50,30 +48,30 @@ public class CloudFrontAuthProviderConfig {
         logger.debugf(
             "Init - Default Config : " +
                 "redirectDelay=%d, redirectFallbackDelay=%d, displayRequestId=%b, " +
-                "accessRoles=%s, authCookiesAttributes=%s, secretKey: defined->%s",
+                "accessRoles=%s, authCookiesAttributes=%s",
             CONF_REDIRECT_DELAY_DEFAULT, CONF_REDIRECT_FALLBACK_DELAY_DEFAULT, CONF_DISPLAY_REQUEST_ID_DEFAULT,
-                 CONF_ACCESS_ROLES_DEFAULT, CONF_AUTH_COOKIES_ATTRIBUTES_DEFAULT, !CONF_SECRET_KEY_DEFAULT.isEmpty());
+                 CONF_ACCESS_ROLES_DEFAULT, CONF_AUTH_COOKIES_ATTRIBUTES_DEFAULT
+        );
 
         redirectDelay = config.getInt(CONF_REDIRECT_DELAY_NAME, CONF_REDIRECT_DELAY_DEFAULT);
         redirectFallbackDelay = config.getInt(CONF_REDIRECT_FALLBACK_DELAY_NAME, CONF_REDIRECT_FALLBACK_DELAY_DEFAULT);
         displayRequestId = config.getBoolean(CONF_DISPLAY_REQUEST_ID_NAME, CONF_DISPLAY_REQUEST_ID_DEFAULT);
         authCookiesAttributes = config.get(CONF_AUTH_COOKIES_ATTRIBUTES_NAME, CONF_AUTH_COOKIES_ATTRIBUTES_DEFAULT);
-        secretKey = config.get(CONF_SECRET_KEY_NAME, CONF_SECRET_KEY_DEFAULT);
 
         // Don't include empty string, and use default list if empty
         accessRoles = Arrays.stream(
-                config.get(CONF_ACCESS_ROLES_NAME, CONF_ACCESS_ROLES_DEFAULT).split(","))
-                .filter(role -> !role.isEmpty())
-                .toList();
+                    config.get(CONF_ACCESS_ROLES_NAME, CONF_ACCESS_ROLES_DEFAULT).split(",")
+                ).filter(role -> !role.isEmpty())
+                 .toList();
 
         if (accessRoles.isEmpty()) {
             accessRoles = CONF_ACCESS_ROLES_DEFAULT_LIST;
         }
 
         logger.debugf("Init - Loaded Config : "
-                + "redirectDelay=%d, redirectFallbackDelay=%d, displayRequestId=%b, accessRoles=%s, "
-                + "authCookiesAttributes=%s, secretKey: defined->%s", redirectDelay,
-            redirectFallbackDelay, displayRequestId, accessRoles, authCookiesAttributes, !secretKey.isEmpty());
+            + "redirectDelay=%d, redirectFallbackDelay=%d, displayRequestId=%b, accessRoles=%s, "
+            + "authCookiesAttributes=%s", redirectDelay,
+            redirectFallbackDelay, displayRequestId, accessRoles, authCookiesAttributes);
     }
 
     public static Integer getRedirectToAuthDelaySec() {
@@ -96,11 +94,15 @@ public class CloudFrontAuthProviderConfig {
         return authCookiesAttributes;
     }
 
-    public static String getSecretKey() {
-        return secretKey;
-    }
-
-    public static boolean secretKeyDefined() {
-        return !secretKey.isEmpty();
+    public static Map<String, String> getAllConfigsMap() {
+        if (allConfigsMap == null) {
+            allConfigsMap = new HashMap<>();
+            allConfigsMap.put("Redirect Delay", redirectDelay.toString());
+            allConfigsMap.put("Redirect Fallback Delay", redirectFallbackDelay.toString());
+            allConfigsMap.put("Display Request ID in Error Pages", displayRequestId.toString());
+            allConfigsMap.put("Access Roles", "[" + String.join(", ", accessRoles) + "]");
+            allConfigsMap.put("Auth Cookies Attributes", authCookiesAttributes);
+        }
+        return allConfigsMap;
     }
 }

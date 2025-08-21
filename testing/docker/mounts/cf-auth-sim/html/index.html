@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -45,26 +45,26 @@
             <i class="bi bi-shield-lock fs-1 me-3"></i>
             <h1 class="mb-0">CloudFront Auth Debug</h1>
             <div class="ms-auto">
-                <span class="text-muted">URL courante :</span>
+                <span class="text-muted">Current URL:</span>
                 <code class="ms-2">{{current_url}}</code>
             </div>
         </div>
 
-        <!-- Redirection vers Keycloak ou Déconnexion -->
+        <!-- Redirect to Keycloak or logout -->
         <div class="alert {% if is_authenticated then %}alert-success{% else %}alert-info{% end %} mb-4">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
                     <i class="bi {% if is_authenticated then %}bi-shield-check{% else %}bi-info-circle{% end %} me-2"></i>
                     {% if is_authenticated then %}
-                        Vous êtes authentifié avec succès.
+                        You are successfully authenticated.
                     {% else %}
-                        Vous pouvez forcer la redirection vers Keycloak en cliquant sur le bouton ci-contre.
+                        You can force a redirect to Keycloak by clicking the button on the right.
                     {% end %}
                 </div>
                 {% if is_authenticated then %}
                     <a href="/logout" class="btn btn-danger">
                         <i class="bi bi-box-arrow-right me-2"></i>
-                        Se déconnecter
+                        Logout
                     </a>
                 {% elseif config_status == "error" then %}
                     <a href="#" class="btn btn-warning disabled">
@@ -83,50 +83,28 @@
             </div>
         </div>
 
-        {#<!-- État de la configuration -->
-        {% if not debug_info.config_status.valid then %}
-        <div class="card mb-4">
-            <div class="card-header bg-danger text-white">
-                <h2 class="h5 mb-0">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    Problèmes de configuration
-                </h2>
-            </div>
-            <div class="card-body">
-                <ul class="list-unstyled mb-0">
-                    {% for _, message in ipairs(debug_info.config_status.messages) do %}
-                        <li class="mb-2">
-                            <i class="bi bi-dot me-2"></i>
-                            {{message}}
-                        </li>
-                    {% end %}
-                </ul>
-            </div>
-        </div>
-        {% end %}#}
-
         <div class="card mb-4">
             <div class="card-header">
                 <h2 class="h5 mb-0">
                     <i class="bi bi-lightning-charge me-2"></i>
-                    État Global
+                    Overall Status
                 </h2>
             </div>
             <div class="card-body">
                 {% if auth_status == "success" then %}
                     <div class="alert alert-success">
                         <i class="bi bi-check-circle-fill me-2"></i>
-                        Authentification CloudFront réussie
+                        CloudFront authentication succeeded
                     </div>
                 {% elseif auth_status == "warning" then %}
                     <div class="alert alert-warning">
                         <i class="bi bi-box-arrow-right me-2"></i>
-                        Déconnecté: {{debug_info.verification_steps["final"].message}}
+                        Logged out: {{debug_info.verification_steps["final"].message}}
                     </div>
                 {% else %}
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Échec de l'authentification CloudFront: {{debug_info.verification_steps["final"].message}}
+                        CloudFront authentication failed: {{debug_info.verification_steps["final"].message}}
                     </div>
                 {% end %}
             </div>
@@ -136,7 +114,7 @@
             <div class="card-header">
                 <h2 class="h5 mb-0">
                     <i class="bi bi-cookie me-2"></i>
-                    Cookies CloudFront
+                    CloudFront Cookies
                 </h2>
             </div>
             <div class="card-body">
@@ -150,9 +128,9 @@
                             <div class="d-flex align-items-center mb-2">
                                 <h3 class="h6 mb-0">{{name}}</h3>
                                 {% if value then %}
-                                    <span class="badge bg-success ms-2">Présent</span>
+                                    <span class="badge bg-success ms-2">Present</span>
                                 {% else %}
-                                    <span class="badge bg-danger ms-2">Manquant</span>
+                                    <span class="badge bg-danger ms-2">Missing</span>
                                 {% end %}
                             </div>
                             {% if value then %}
@@ -163,7 +141,7 @@
                 {% else %}
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle me-2"></i>
-                        Aucun cookie CloudFront trouvé
+                        No CloudFront cookies found
                     </div>
                 {% end %}
             </div>
@@ -176,9 +154,9 @@
                     <i class="bi bi-gear me-2"></i>
                     Configuration
                     {% if config_status == "error" then %}
-                        <span class="badge bg-danger ms-2">Erreur</span>
+                        <span class="badge bg-danger ms-2">Error</span>
                     {% else %}
-                        <span class="badge bg-success ms-2">Correcte</span>
+                        <span class="badge bg-success ms-2">OK</span>
                     {% end %}
                 </h2>
             </div>
@@ -191,7 +169,7 @@
                                     <tr>
                                         <th scope="row">{{key}}</th>
                                         {% if value == "ERROR" then %}
-                                            <td><span class="badge bg-danger ms-2">En Erreur</span></td>
+                                            <td><span class="badge bg-danger ms-2">In Error</span></td>
                                         {% else %}
                                             <td>{{value}}</td>
                                         {% end %}
@@ -203,7 +181,7 @@
                 {% else %}
                     <div class="alert alert-warning">
                         <i class="bi bi-exclamation-triangle me-2"></i>
-                        Aucune configuration disponible
+                        No configuration available
                     </div>
                 {% end %}
             </div>
@@ -213,7 +191,7 @@
             <div class="card-header">
                 <h2 class="h5 mb-0">
                     <i class="bi bi-list-check me-2"></i>
-                    Étapes de vérification
+                    Verification Steps
                 </h2>
             </div>
             <div class="card-body">
@@ -223,34 +201,34 @@
                             <div class="d-flex align-items-center mb-2">
                                 <h3 class="h6 mb-0">{{step_name}}</h3>
                                 {% if step_info.status == "success" then %}
-                                    <span class="badge bg-success ms-2">Succès</span>
+                                    <span class="badge bg-success ms-2">Success</span>
                                 {% elseif step_info.status == "not_checked" then %}
-                                    <span class="badge bg-warning ms-2">Non vérifiée</span>
+                                    <span class="badge bg-warning ms-2">Not checked</span>
                                 {% else %}
-                                    <span class="badge bg-danger ms-2">Échec</span>
+                                    <span class="badge bg-danger ms-2">Failure</span>
                                 {% end %}
                             </div>
-                            
+
                             {% if step_info.message then %}
                                 <p class="mb-2">{{step_info.message}}</p>
                             {% end %}
 
                             {% if step_info.policy then %}
                                 <div class="mt-3">
-                                    <h4 class="h6">Détails de la Policy :</h4>
+                                    <h4 class="h6">Policy details:</h4>
                                     <pre>{{step_info.raw_policy}}</pre>
-                                    
+
                                     {% if step_info.policy.Statement then %}
                                         <div class="mt-3">
-                                            <h5 class="h6">Vérifications de la policy :</h5>
+                                            <h5 class="h6">Policy checks:</h5>
                                             {% for _, statement in ipairs(step_info.policy.Statement) do %}
                                                 <div class="policy-checks">
                                                     <div class="policy-item {{statement.Resource and 'valid' or 'invalid'}}">
-                                                        <strong>Resource:</strong> 
+                                                        <strong>Resource:</strong>
                                                         {% if statement.Resource then %}
                                                             {{statement.Resource}}
                                                         {% else %}
-                                                            <span class="text-danger">Non spécifiée</span>
+                                                            <span class="text-danger">Not specified</span>
                                                         {% end %}
                                                     </div>
 
@@ -259,7 +237,7 @@
                                                             <div class="policy-item valid">
                                                                 <strong>{{cond_type}}:</strong>
                                                                 {% for key, value in pairs(conditions) do %}
-                                                                    <div>{{key}}: 
+                                                                    <div>{{key}}:
                                                                         {% if type(value) == "number" then %}
                                                                             <span class="timestamp">{{os.date("%Y-%m-%d %H:%M:%S", value)}}</span>
                                                                         {% else %}
@@ -271,8 +249,8 @@
                                                         {% end %}
                                                     {% else %}
                                                         <div class="policy-item invalid">
-                                                            <strong>Conditions:</strong> 
-                                                            <span class="text-danger">Aucune condition définie</span>
+                                                            <strong>Conditions:</strong>
+                                                            <span class="text-danger">No conditions defined</span>
                                                         </div>
                                                     {% end %}
                                                 </div>
@@ -284,15 +262,15 @@
 
                             {% if step_info.expiration then %}
                                 <div class="mt-3">
-                                    <h4 class="h6">Informations d'expiration :</h4>
+                                    <h4 class="h6">Expiration info:</h4>
                                     <ul class="list-unstyled">
                                         <li>
                                             <i class="bi bi-clock me-2"></i>
-                                            Expiration : <span class="timestamp">{{os.date("%Y-%m-%d %H:%M:%S", step_info.expiration)}}</span>
+                                            Expiration: <span class="timestamp">{{os.date("%Y-%m-%d %H:%M:%S", step_info.expiration)}}</span>
                                         </li>
                                         <li>
                                             <i class="bi bi-hourglass-split me-2"></i>
-                                            Heure actuelle : <span class="timestamp">{{os.date("%Y-%m-%d %H:%M:%S", step_info.current_time)}}</span>
+                                            Current time: <span class="timestamp">{{os.date("%Y-%m-%d %H:%M:%S", step_info.current_time)}}</span>
                                         </li>
                                     </ul>
                                 </div>
@@ -302,7 +280,7 @@
                 {% else %}
                     <div class="alert alert-warning">
                         <i class="bi bi-exclamation-triangle me-2"></i>
-                        Aucune étape de vérification effectuée
+                        No verification steps executed
                     </div>
                 {% end %}
             </div>

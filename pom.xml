@@ -55,9 +55,9 @@
     <keycloak-version.major>26</keycloak-version.major>
     <keycloak-version.minor>3</keycloak-version.minor>
     <!-- Combined property used by existing references (produces e.g. 26.3) -->
-    <keycloak-major.version>${keycloak-version.major}.${keycloak-version.minor}</keycloak-major.version>
+    <keycloak-version.major-minor>${keycloak-version.major}.${keycloak-version.minor}</keycloak-version.major-minor>
     <build-suffix>-SNAPSHOT</build-suffix>
-    <revision>${project-version}-KC${keycloak-major.version}${build-suffix}</revision>
+    <revision>${project-version}-KC${keycloak-version.major-minor}${build-suffix}</revision>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -73,7 +73,7 @@
             <dependency>
                 <groupId>org.keycloak</groupId>
                 <artifactId>keycloak-parent</artifactId>
-                <version>${keycloak-major.version}.0</version>
+                <version>${keycloak-version.major-minor}.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -130,6 +130,12 @@
             <artifactId>keycloak-admin-client</artifactId>
             <!-- Admin client must use major-only stable stream: XX.0.0 -->
             <version>${keycloak-version.major}.0.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>java-dotenv</artifactId>
+            <version>5.2.2</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -224,7 +230,7 @@
                         <include>**/*IntegrationTest.java</include>
                     </includes>
                     <systemPropertyVariables>
-                        <keycloak.docker.tag>${keycloak-major.version}.0</keycloak.docker.tag>
+                        <keycloak.docker.tag>${keycloak-version.major-minor}.0</keycloak.docker.tag>
                         <java.util.logging.config.file>${project.build.testOutputDirectory}/logging.properties</java.util.logging.config.file>
                     </systemPropertyVariables>
                 </configuration>

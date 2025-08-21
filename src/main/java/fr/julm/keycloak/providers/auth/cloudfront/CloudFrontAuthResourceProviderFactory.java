@@ -11,11 +11,12 @@ import org.keycloak.services.resource.RealmResourceProvider;
 import org.keycloak.services.resource.RealmResourceProviderFactory;
 
 public class CloudFrontAuthResourceProviderFactory
-    implements RealmResourceProviderFactory, ServerInfoAwareProviderFactory {
-
+    implements RealmResourceProviderFactory, ServerInfoAwareProviderFactory
+{
     public static final String PROVIDER_ID = "cloudfront-auth";
-    public static final String VERSION = CloudFrontAuthResourceProviderFactory.class
-                                            .getPackage().getImplementationVersion();
+    public static final String VERSION = CloudFrontAuthResourceProviderFactory
+                                            .class.getPackage()
+                                            .getImplementationVersion();
 
     @Override
     public RealmResourceProvider create(KeycloakSession session) {
@@ -44,9 +45,9 @@ public class CloudFrontAuthResourceProviderFactory
     public Map<String, String> getOperationalInfo() {
         Map<String, String> info = new HashMap<>();
         info.put("Version", VERSION);
-        info.put("Redirect Delay", String.valueOf(CloudFrontAuthProviderConfig.getRedirectToAuthDelaySec()));
-        info.put("Redirect Fallback Delay", String.valueOf(CloudFrontAuthProviderConfig.getRedirectToAuthFallbackDelaySec()));
-        info.put("Display Request ID in Error Pages", String.valueOf(CloudFrontAuthProviderConfig.displayRequestIdEnabled()));
+        info.put("Redirect Delay", CloudFrontAuthProviderConfig.getRedirectToAuthDelaySec().toString());
+        info.put("Redirect Fallback Delay", CloudFrontAuthProviderConfig.getRedirectToAuthFallbackDelaySec().toString());
+        info.put("Display Request ID in Error Pages", CloudFrontAuthProviderConfig.displayRequestIdEnabled().toString());
         info.put("Access Roles", "[" + String.join(", ", CloudFrontAuthProviderConfig.getAccessRoles()) + "]");
         info.put("Auth Cookies Attributes", CloudFrontAuthProviderConfig.getAuthCookiesAttributes());
         return info;

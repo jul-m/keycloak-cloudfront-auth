@@ -1,39 +1,31 @@
 package fr.julm.keycloak.providers.auth.cloudfront;
 
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.*;
+import java.net.URI;
+import java.time.*;
+import java.util.*;
 import org.jboss.logging.Logger;
+import org.keycloak.events.*;
+import org.keycloak.models.*;
 import org.keycloak.OAuth2Constants;
-import org.keycloak.events.Details;
-import org.keycloak.events.EventBuilder;
-import org.keycloak.events.EventType;
-import org.keycloak.models.AuthenticatedClientSessionModel;
-import org.keycloak.models.ClientSessionContext;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oidc.TokenManager;
-import org.keycloak.protocol.oidc.utils.OAuth2CodeParser.ParseResult;
 import org.keycloak.protocol.oidc.utils.OAuth2CodeParser;
-import org.keycloak.representations.AccessToken.Access;
+import org.keycloak.protocol.oidc.utils.OAuth2CodeParser.ParseResult;
 import org.keycloak.representations.AccessToken;
+import org.keycloak.representations.AccessToken.Access;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.util.DefaultClientSessionContext;
 
-import java.net.URI;
-import java.util.Map;
-import java.util.UUID;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.HashMap;
-import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.*;
-
 import fr.julm.keycloak.providers.auth.cloudfront.CloudFrontAuthConfigMapper.CloudFrontAuthClientConfig;
+
 
 @Path("/cloudfront-auth/.cdn-auth")
 public class CloudFrontAuthResource {
     private static final Logger logger = Logger.getLogger(CloudFrontAuthResource.class);
+    private static final String LOOP_COOKIE_NAME = "cloudfront_auth_loop";
+    private static final int LOOP_COOKIE_MAX_AGE_SEC = 60; // 1 minute
+    private static final int LOOP_COOKIE_FAIL_THRESHOLD = 10;
 
     private final KeycloakSession session;
     private final TokenManager tokenManager;
@@ -61,10 +53,10 @@ public class CloudFrontAuthResource {
 
         // event: Only for errors
         EventBuilder event = new EventBuilder(masterRealm, session)
-            .event(EventType.LOGIN)
-            .ipAddress(session.getContext().getConnection().getRemoteAddr())
-            .detail("request_type", "cloudfront_auth_redirect")
-            .detail("cloudfront_request_id", cfRequestId);
+                                    .event(EventType.LOGIN)
+                                    .ipAddress(session.getContext().getConnection().getRemoteAddr())
+                                    .detail("request_type", "cloudfront_auth_redirect")
+                                    .detail("cloudfront_request_id", cfRequestId);
         
         String logPrefix = "- " + requestId + " - /cloudfront-auth/.cdn-auth/_cf_redirect_403";
         logger.debugf("%s - call handleRedirect403(" +
@@ -72,6 +64,8 @@ public class CloudFrontAuthResource {
             logPrefix, realmName, clientId, clientSecret.isEmpty(), cfSignKeyId, cfRequestId);
 
         try {
+            // ...existing code...
+
             if (realmName == null || clientId == null || clientSecret.isEmpty() || cfSignKeyId == null) {
                 String errorMessage = String.format("Missing required headers: " +
                         "kc-realm-name: %s, kc-client-id: %s, kc-client-secret (Defined: %b), kc-cf-sign-key-id: %s",
@@ -89,26 +83,28 @@ public class CloudFrontAuthResource {
             // TODO: Check if valid signed cookie exists, and return "App 403 error if true"
 
             event = new EventBuilder(authenticatedClient.realm, session)
-                    .event(EventType.LOGIN)
-                    .ipAddress(session.getContext().getConnection().getRemoteAddr())
-                    .detail("request_type", "cloudfront_auth_redirect")
-                    .detail("cloudfront_request_id", cfRequestId)
-                    .client(authenticatedClient.client);
+                            .event(EventType.LOGIN)
+                            .ipAddress(session.getContext().getConnection().getRemoteAddr())
+                            .detail("request_type", "cloudfront_auth_redirect")
+                            .detail("cloudfront_request_id", cfRequestId)
+                            .client(authenticatedClient.client);
 
             // Build authorization URL
             String authUrl = UriBuilder.fromUri(authenticatedClient.authEndpoint)
-                    .queryParam("client_id", clientId)
-                    .queryParam("response_type", "code")
-                    .queryParam("redirect_uri", authenticatedClient.redirectUri)
-                    .queryParam("scope", "openid")
-                    .toTemplate();
+                                       .queryParam("client_id", clientId)
+                                       .queryParam("response_type", "code")
+                                       .queryParam("redirect_uri", authenticatedClient.redirectUri)
+                                       .queryParam("scope", "openid")
+                                       .toTemplate();
 
             // Prepare template attributes
             Map<String, Object> attributes = new HashMap<>();
             attributes.put("redirectUriPath", CloudFrontAuthProviderConfig.REDIRECT_URI_PATH);
             attributes.put("authUrl", authUrl);
             attributes.put("redirectDelay", CloudFrontAuthProviderConfig.getRedirectToAuthDelaySec());
-            attributes.put("redirectFallbackDelay", CloudFrontAuthProviderConfig.getRedirectToAuthFallbackDelaySec());
+            attributes.put(
+                "redirectFallbackDelay",
+                CloudFrontAuthProviderConfig.getRedirectToAuthFallbackDelaySec());
             
             return redirectTemplate.serve(session, attributes, Response.Status.OK);
         }
@@ -203,7 +199,8 @@ public class CloudFrontAuthResource {
             Map<String, Access> resourceAccess = accessToken.getResourceAccess();
 
             if (!resourceAccess.containsKey(clientId)) {
-                errorMessage = String.format("User '%s' does not have any role in client '%s'", user.getUsername(), clientId);
+                errorMessage = String.format(
+                    "User '%s' does not have any role in client '%s'", user.getUsername(), clientId);
                 logger.errorf("%s - %s", logPrefix, errorMessage);
                 return errorResponse(
                     session, Messages.ACCESS_DENIED, Response.Status.UNAUTHORIZED, requestId, event, errorMessage);
@@ -244,9 +241,56 @@ public class CloudFrontAuthResource {
             CloudFrontAuthClientConfig cloudfrontClientConfig = new CloudFrontAuthClientConfig(clientSession);
 
             // Build response with cookies
-            Response.ResponseBuilder builder = Response.status(Response.Status.FOUND)
-                    .header(HttpHeaders.LOCATION, originalUri)
-                    .cacheControl(CloudFrontTemplate.CACHE_CONTROL_NO_CACHE);
+            Response.ResponseBuilder builder;
+
+            // Loop detection cookie handling: read from request cookie header, increment and attach to response
+            String cookieHeader = session.getContext().getRequestHeaders().getHeaderString(HttpHeaders.COOKIE);
+            int loopCount = 0;
+            if (cookieHeader != null) {
+                for (String part : cookieHeader.split(";")) {
+                    String[] kv = part.trim().split("=", 2);
+                    if (kv.length == 2 && kv[0].equals(LOOP_COOKIE_NAME)) {
+                        try {
+                            loopCount = Integer.parseInt(kv[1]);
+                        }
+                        catch (NumberFormatException nfe) {
+                            loopCount = 0;
+                        }
+                    }
+                }
+            }
+
+            loopCount = loopCount + 1;
+
+            String loopCookieHeader = String.format("%s=%d; Max-Age=%d; Path=/; Secure; HttpOnly",
+            LOOP_COOKIE_NAME, loopCount, LOOP_COOKIE_MAX_AGE_SEC);
+
+            if (loopCount >= LOOP_COOKIE_FAIL_THRESHOLD) {
+                logger.warnf("%s - Loop detection triggered in callback (count=%d)", logPrefix, loopCount);
+
+                Map<String, Object> attributes = new HashMap<>();
+                attributes.put("message",
+                    "Unable to redirect to the application (error 310). " +
+                    "Please contact the administrator if the problem persists."
+                );
+                if (CloudFrontAuthProviderConfig.displayRequestIdEnabled()) {
+                    attributes.put("cfRequestId", requestId);
+                }
+
+                // Use centralized errorResponse to render the error page and allow attaching custom headers
+                Map<String, String> extraHeaders = Collections.singletonMap(HttpHeaders.SET_COOKIE, loopCookieHeader);
+                return buildErrorResponse(session,
+                    "Unable to redirect to the application (error 310). "+
+                    "Please contact the administrator if the problem persists.",
+                    310,
+                    requestId,
+                    extraHeaders
+                );
+            }
+
+            builder = Response.status(Response.Status.FOUND)
+                               .header(HttpHeaders.LOCATION, originalUri)
+                               .cacheControl(CloudFrontTemplate.CACHE_CONTROL_NO_CACHE);
 
             for (String cookie : cookies) {
                 builder.header(HttpHeaders.SET_COOKIE, cookie);
@@ -257,6 +301,8 @@ public class CloudFrontAuthResource {
                 builder.header(HttpHeaders.SET_COOKIE, cloudfrontClientConfig.generateJwtCookie(encodedAccessToken));
             }
 
+            // Attach incremented loop cookie so admin can see the count in case of client-side issues
+            builder.header(HttpHeaders.SET_COOKIE, loopCookieHeader);
             event.detail(Details.REDIRECT_URI, originalUri)
                 .detail("cookie_expiration", ZonedDateTime.ofInstant(cookieExpiration, ZoneOffset.UTC).toString())
                 .detail("cookie_allowed_resources", cookieResourceUrl)
@@ -264,7 +310,6 @@ public class CloudFrontAuthResource {
                 .success();
 
             return builder.build();
-
         }
         catch (WebApplicationException e) {
             Response response = e.getResponse();
@@ -282,15 +327,15 @@ public class CloudFrontAuthResource {
     @Path("{path:.*}")
     public Response handleCorsOptions(@Context HttpHeaders headers) {
         return Response.ok()
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-                .header("Access-Control-Max-Age", "86400")
-                .build();
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                    .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+                    .header("Access-Control-Max-Age", "86400")
+                    .build();
     }
 
-    private Response errorResponse(
-        KeycloakSession session, String message, Response.Status status, String cfRequestId
+    private Response buildErrorResponse(
+        KeycloakSession session, String message, int statusCode, String cfRequestId, Map<String, String> extraHeaders
     ) {
         try {
             Map<String, Object> attributes = new HashMap<>();
@@ -299,7 +344,20 @@ public class CloudFrontAuthResource {
             if (CloudFrontAuthProviderConfig.displayRequestIdEnabled())
                 attributes.put("cfRequestId", cfRequestId);
 
-            return this.errorTemplate.serve(session, attributes, status);
+            String html = this.errorTemplate.render(session, attributes);
+
+            Response.ResponseBuilder builder = Response.status(statusCode)
+                                                    .type(MediaType.TEXT_HTML_TYPE)
+                                                    .entity(html)
+                                                    .cacheControl(CloudFrontTemplate.CACHE_CONTROL_NO_CACHE);
+
+            if (extraHeaders != null) {
+                for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
+                    builder.header(e.getKey(), e.getValue());
+                }
+            }
+
+            return builder.build();
         }
         catch (Exception e) {
             logger.error("Failed to generate error page", e);
@@ -308,8 +366,7 @@ public class CloudFrontAuthResource {
     }
 
     private Response errorResponse(KeycloakSession session, String message, int statusCode, String cfRequestId) {
-        Response.Status status = Response.Status.fromStatusCode(statusCode);
-        return errorResponse(session, message, status, cfRequestId);
+        return buildErrorResponse(session, message, statusCode, cfRequestId, null);
     }
 
     private Response errorResponse(
