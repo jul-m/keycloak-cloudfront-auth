@@ -87,6 +87,7 @@ nb-configuration.xml
 ##############################
 ## Miscellaneous
 ##############################
+lib/
 *.log
 *.tmp/
 *.ignore

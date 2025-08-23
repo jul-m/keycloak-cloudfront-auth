@@ -5,7 +5,7 @@ import java.util.Map;
 
 /**
  * Centralised constants for integration tests. Values are read from a project
- * `.env` file (testing/docker/.env) when present; otherwise System environment
+ * `.env` file (docker/dev-tests/.env) when present; otherwise System environment
  * variables are used; otherwise sensible defaults.
  */
 public final class ITEnvConfig {
@@ -13,11 +13,11 @@ public final class ITEnvConfig {
     private static final Dotenv DOTENV;
 
     static {
-        // Configure Dotenv to load testing/docker/.env relative to project root if present.
+        // Configure Dotenv to load docker/dev-tests/.env relative to project root if present.
         Dotenv d;
         try {
             d = Dotenv.configure()
-                    .directory("testing/docker")
+                    .directory("docker/dev-tests")
                     .filename(".env")
                     .ignoreIfMalformed()
                     .ignoreIfMissing()

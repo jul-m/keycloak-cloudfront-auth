@@ -16,7 +16,9 @@ print_help() {
 Usage: $0 <command> [options] [args]
 
 Commands:
-  build    Build the project (wraps scripts/build.sh). See "$0 build --help" for details.
+    build           Build the project (wraps scripts/build.sh). See "$0 build --help" for details.
+    docker-build    Build Docker images using scripts/docker-build.sh. See "$0 docker-build --help" for details.
+    docker-run      Run predefined docker compose stacks (demo, dev-tests). See "$0 docker-run --help" for details.
 
 Global help flags:
   -h, --help, help    Show this help
@@ -37,7 +39,7 @@ Behavior on failure when using on-failure / always:
     If you pass --keep-containers=on-failure or --keep-containers=always
     and the tests fail, the test runner will stop running further Keycloak versions so
     you can inspect the running containers. Containers will NOT be removed by the
-    test script in that case; run 'cd testing/docker && docker-compose down -v --remove-orphans'
+    test script in that case; run 'cd docker/dev-tests && docker-compose down -v --remove-orphans'
     manually when you are done inspecting.
 
 Any other positional arguments are forwarded to scripts/build.sh unchanged.
@@ -162,6 +164,92 @@ case "$COMMAND" in
 
         echo "Build (and optional tests) completed successfully."
         ;;
+    
+    docker-build)
+        # Forward all arguments to scripts/docker-build.sh
+        print_build_docker_usage() {
+            # Delegate help to the script but export PARENT_CMD so the script
+            # prints a usage line that references the wrapper invocation.
+            PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" --help
+        }
+
+        if [ "$#" -eq 0 ]; then
+            # When the user calls the wrapper with no args, show the wrapper's
+            # short usage and don't attempt to show the target script's help.
+            print_build_docker_usage
+            exit 2
+        fi
+
+        # Treat explicit help like no-args: show the wrapper's short usage only.
+        case "$1" in
+            -h|--help|help)
+                print_build_docker_usage
+                exit 2
+                ;;
+        esac
+
+    echo "Running docker-build: $SCRIPTS_DIR/docker-build.sh $*"
+    set +e
+    # Export PARENT_CMD so the delegated script can display usage that
+    # references the wrapper invocation when printing help.
+    PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" "$@"
+        rc=$?
+        set -e
+        if [ $rc -ne 0 ]; then
+            echo "[ERROR] docker-build failed (exit code $rc)."
+            exit $rc
+        fi
+        ;;
+    docker-run)
+        # Run predefined docker compose stacks: demo or dev-tests
+        print_docker_run_usage() {
+            cat <<EOF
+Usage: $0 docker-run <stack> [args]
+
+Stacks:
+  demo       Run the demo stack (docker/demo/compose.yml)
+  dev-tests  Run the dev-tests stack (docker/dev-tests/compose.yml)
+
+Any additional arguments are forwarded to 'docker compose'.
+EOF
+        }
+
+        if [ "$#" -lt 1 ]; then
+            print_docker_run_usage
+            exit 2
+        fi
+
+        case "$1" in
+            -h|--help|help)
+                print_docker_run_usage
+                exit 0
+                ;;
+            demo)
+                shift
+                CMD=(docker compose -f "$REPO_ROOT/docker/demo/compose.yml" up "$@")
+                ;;
+            dev-tests)
+                shift
+                CMD=(docker compose -f "$REPO_ROOT/docker/dev-tests/compose.yml" up "$@")
+                ;;
+            *)
+                echo "[ERROR] Unknown docker-run stack: $1"
+                print_docker_run_usage
+                exit 1
+                ;;
+        esac
+
+        echo "Running: ${CMD[*]}"
+        set +e
+        "${CMD[@]}"
+        rc=$?
+        set -e
+        if [ $rc -ne 0 ]; then
+            echo "[ERROR] docker-run failed (exit code $rc)."
+            exit $rc
+        fi
+        ;;
+    
     *)
         echo "[ERROR] Unknown command: $COMMAND"
         print_help

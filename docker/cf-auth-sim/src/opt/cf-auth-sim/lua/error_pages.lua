@@ -3,7 +3,7 @@ local _M = {}
 
 -- Error template configurations keyed by HTTP status code.
 -- Values are strings used to replace {{KEY}} placeholders in the
--- shared HTML template mounted at /mnt/docker/html/error.html.
+-- shared HTML template mounted at /opt/cf-auth-sim/html/error.html.
 local error_configs = {
     ["502"] = {
         PAGE_TITLE = "Authentication Service Unavailable",
@@ -67,7 +67,7 @@ function _M.generate_error_page(error_code, custom_message)
     end
 
     -- Read the shared template file from the mounted volume.
-    local template_file = io.open("/mnt/docker/html/error.html", "r")
+    local template_file = io.open("/opt/cf-auth-sim/html/error.html", "r")
     if not template_file then
         return nil, "Template file not found"
     end

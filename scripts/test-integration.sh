@@ -22,7 +22,7 @@ show_help() {
     echo "  If you pass --keep-containers=on-failure or --keep-containers=always,"
     echo "  the script will stop running further versions when a failure occurs so you can"
     echo "  inspect the running containers. Containers will NOT be removed by this script"
-    echo "  in that case; run 'cd testing/docker && docker-compose down -v --remove-orphans'"
+    echo "  in that case; run 'cd docker/dev-tests && docker-compose down -v --remove-orphans'"
     echo "  manually when finished."
     echo "  -h, --help, help           Show this help"
     echo -e "\nExamples:"
@@ -186,13 +186,13 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
     # Split version format VV.N into major and minor (e.g., 26.3 -> major=26 minor=3)
     # Step 1: Clean up existing Docker containers
     echo "Cleaning up existing Docker containers..."
-    cd testing/docker
+    cd docker/dev-tests
     docker-compose down -v --remove-orphans > /dev/null 2>&1
     cd ../..
     
     # Step 2: Copy selected JAR from dist/ to providers directory
     echo "Preparing extension JAR for Keycloak $kc_version..."
-    PROVIDERS_DIR="testing/docker/mounts/kc_providers"
+    PROVIDERS_DIR="docker/dev-tests/mounts/kc_providers"
     rm -rf "$PROVIDERS_DIR"/*
 
     # find corresponding JAR from VERSIONS_AVAILABLE/JARS_AVAILABLE
@@ -215,7 +215,7 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
     
     # Step 3: Launch Docker Compose
     echo "Starting Keycloak with Docker Compose..."
-    cd testing/docker
+    cd docker/dev-tests
     # Export version vars for Docker and tests
     export KCA_KC_VERSION="$kc_version"
     docker-compose up -d
@@ -297,7 +297,7 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
                 continue
             else
                 echo "Keeping Docker containers for debugging (policy: $CONTAINER_CLEANUP_POLICY)"
-                echo "To manually clean up later: cd testing/docker && docker-compose down -v --remove-orphans"
+                echo "To manually clean up later: cd docker/dev-tests && docker-compose down -v --remove-orphans"
                 cd ../..
                 FAILED_TESTS+=("Keycloak $kc_version - configurator failed: $configurator_reason")
                 echo "Stopping further tests so you can inspect containers (policy: $CONTAINER_CLEANUP_POLICY)."
@@ -341,17 +341,17 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
                 echo "Cleaning up Docker containers (policy: on-failure, tests passed)..."
             else
                 echo "Keeping Docker containers for debugging (policy: on-failure, tests failed)..."
-                echo "To manually clean up later: cd testing/docker && docker-compose down -v --remove-orphans"
+                echo "To manually clean up later: cd docker/dev-tests && docker-compose down -v --remove-orphans"
             fi
             ;;
         always)
             echo "Keeping Docker containers (policy: always)..."
-            echo "To manually clean up: cd testing/docker && docker-compose down -v --remove-orphans"
+            echo "To manually clean up: cd docker/dev-tests && docker-compose down -v --remove-orphans"
             ;;
     esac
     
     if [ "$should_cleanup" = true ]; then
-        cd testing/docker
+        cd docker/dev-tests
         docker-compose down -v --remove-orphans > /dev/null 2>&1
         cd ../..
     fi

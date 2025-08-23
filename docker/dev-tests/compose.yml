@@ -15,35 +15,21 @@ services:
       - KC_PROXY_HEADERS=xforwarded
       - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=${KCA_KC_AUTH_REDIRECT_DELAY}
       - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=${KCA_KC_AUTH_REDIRECT_FALLBACK_DELAY}
+    env_file:
+      - .env
     ports:
       - "${KCA_KC_HOST_PORT}:80"
-    command:
-      - start-dev
     volumes:
-      - ./mounts/kc_providers:/opt/keycloak/providers:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 5s
-      timeout: 2s
-      retries: 15
+      - ../../dist/:/mnt/dist/:ro
+      - ../../docker/dev-tests/configs:/mnt/configs:ro
+      - ../../docker/dev-tests/configure-start.sh:/configure-start.sh:ro
+      - ../../lib/keycloak-config-cli/keycloak-config-cli-KC${KCA_KC_VERSION}.jar:/mnt/keycloak-config-cli/keycloak-config-cli.jar:ro
+    entrypoint:
+      - /configure-start.sh
 
-  configurator:
-    image: eclipse-temurin:21
-    container_name: kc-cloudfront-auth_configurator
-    environment:
-      - KEYCLOAK_VERSION=${KCA_KC_VERSION}
-      - KCA_KC_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD}
-      - KCA_KC_ADMIN_USER=${KCA_KC_ADMIN_USER}
-      - KCA_KC_CLIENT_ID=${KCA_KC_CLIENT_ID}
-      - KCA_KC_CLIENT_SECRET=${KCA_KC_CLIENT_SECRET}
-      - KCA_KC_REALM_NAME=${KCA_KC_REALM_NAME}
-      - KCA_OPENRESTY_HOST_PORT=${KCA_OPENRESTY_HOST_PORT}
-    volumes:
-      - ./mounts/configurator:/mnt/docker:ro
-    command: sh /mnt/docker/configure.sh
 
   cf-auth-sim:
-    image: openresty/openresty:alpine-fat
+    image: keycloak-cloudfront-auth-simulator:latest # Use kca cf-auth-sim img for installed luarocks dependencies
     container_name: kc-cloudfront-auth_cf-auth-sim
     environment:
       - DEBUG_PAGE_NO_AUTH=${KCA_DEBUG_PAGE_NO_AUTH}
@@ -57,13 +43,5 @@ services:
     ports:
       - "${KCA_OPENRESTY_HOST_PORT}:80"
     volumes:
-      - ./mounts/cf-auth-sim:/mnt/docker:ro
-      - ./mounts/cf-auth-sim/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
-    command: >
-      sh -c "
-        luarocks install lua-resty-rsa &&
-        luarocks install lua-resty-template &&
-        luarocks install lua-resty-http &&
-        luarocks install lua-resty-openssl &&
-        /usr/local/openresty/bin/openresty -g 'daemon off;'
-      "
+      - ../cf-auth-sim/src/opt/cf-auth-sim:/opt/cf-auth-sim:ro
+      - ../cf-auth-sim/src/usr/local/openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro

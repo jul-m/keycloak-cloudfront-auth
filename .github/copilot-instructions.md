@@ -17,7 +17,7 @@
 3) Commandes de build & dev utiles
 - Compiler jar: `mvn clean package` (ou `./build.sh` qui gère versions Keycloak et suffixes).
 - Artefact: `target/keycloak-cloudfront-auth-*KC<version>*.jar` (le script `build.sh` recherche ce motif).
-- Intégration rapide: `cd testing/docker && docker-compose up` (installe automatiquement le provider depuis mounts/configurator/providers).
+- Intégration rapide: `cd docker/dev-tests && docker-compose up` (installe automatiquement le provider depuis mounts/configurator/providers).
 - Tests d'intégration: `./test-integration.sh` (présent dans la racine / scripts selon usage).
 
 4) Conventions runtime & sécurité
