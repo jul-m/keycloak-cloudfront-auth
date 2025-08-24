@@ -10,14 +10,6 @@ elif [ "$REPO_ROOT" = "$(pwd)" ]; then
   DISPLAY_NAME="./scripts/$(basename "$0")"
 fi
 
-# If running in GitHub Actions, force non-interactive/plain build progress so
-# logs are readable (disable interactive progress bars).
-if [ -n "${GITHUB_ACTIONS:-}" ]; then
-  export COMPOSE_DOCKER_CLI_BUILD=1
-  export DOCKER_BUILDKIT=1
-  export BUILDKIT_PROGRESS=plain
-fi
-
 usage() {
   cat <<EOF
 Usage: $DISPLAY_NAME <stack> [sub-command] [options] [KEYCLOAK_VERSION] [-- extra docker-compose args]
@@ -148,6 +140,21 @@ if [ "$DETACH" = true ]; then
 fi
 if [ ${#COMPOSE_ARGS[@]} -gt 0 ]; then
   CMD+=("${COMPOSE_ARGS[@]}")
+fi
+
+# In CI (GitHub Actions) prefer quiet pulls to avoid noisy progress bars
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  # Add --quiet-pull unless already present in the command
+  skip_quiet=0
+  for a in "${CMD[@]}"; do
+    if [ "$a" = "--quiet-pull" ]; then
+      skip_quiet=1
+      break
+    fi
+  done
+  if [ $skip_quiet -eq 0 ]; then
+    CMD+=("--quiet-pull")
+  fi
 fi
 
 # Export any extra VAR=VALUE provided via --vars
