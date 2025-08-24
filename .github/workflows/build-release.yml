@@ -43,10 +43,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Ensure run.sh is executable
-        run: |
-          chmod +x ./run.sh
-
       - name: Build provider JAR(s) for requested Keycloak versions
         id: build_jars
         run: |
@@ -123,7 +119,10 @@ jobs:
               TAGS="$TAGS KC${ver}-latest"
             fi
             echo "Building image for Keycloak $ver with tags: $TAGS"
-            ./run.sh docker-build demo "$ver" $TAGS --platforms linux/amd64,linux/arm64
+            ./run.sh docker-build demo "$ver" $TAGS -- \
+              --platform linux/amd64,linux/arm64 \
+              --cache-to type=gha,mode=max \
+              --cache-from type=gha
           done
 
           # Determine newest KC version for optional overall 'latest' tag

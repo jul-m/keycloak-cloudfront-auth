@@ -42,7 +42,10 @@ jobs:
 
           echo "Building keycloak-cloudfront-auth-simulator with tags: $TAGS"
           # Use the repo's run.sh wrapper which delegates to scripts/docker-build.sh
-          ./run.sh docker-build cf-auth-sim $TAGS --platforms linux/amd64,linux/arm64
+          ./run.sh docker-build cf-auth-sim $TAGS -- \
+              --platform linux/amd64,linux/arm64 \
+              --cache-to type=gha,mode=max \
+              --cache-from type=gha
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v2

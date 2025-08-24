@@ -37,15 +37,15 @@ Subcommands: demo, cf-auth-sim, help
 $DISPLAY_NAME cf-auth-sim [<tags>...]
   Build the CloudFront auth simulator image (docker/cf-auth-sim).
   Optional <tags> list (space-separated). Default: "latest".
-  Optional flag: --platforms <platforms> (or -p) to pass to 'docker build --platform'.
-    Example: --platforms linux/amd64,linux/arm64 to build for amd64 and aarch64.
+  Optional: append a separator `--` followed by any extra arguments to pass
+  directly to 'docker build'. Example: -- --platform linux/amd64,linux/arm64 --pull
 
 $DISPLAY_NAME demo <KC_VERSION> [<tags>...]
   Build preconfigured Keycloak image for keycloak-cloudfront-auth Demo (docker/demo/Dockerfile).
   <KC_VERSION> must be in format XX.Y and provider version build must exist in dist/. Example: "26.3"
   Optional <tags> list (space-separated). Default: "latest".
-  Optional flag: --platforms <platforms> (or -p) to pass to 'docker build --platform'.
-    Example: --platforms linux/amd64,linux/arm64 to build for amd64 and aarch64.
+  Optional: append a separator `--` followed by any extra arguments to pass
+  directly to 'docker build'. Example: -- --platform linux/amd64,linux/arm64 --pull
 
 $DISPLAY_NAME help
     Show this help (also available as -h or --help)
@@ -65,31 +65,27 @@ case "$1" in
   
   cf-auth-sim)
     shift || true
-    # Optional flag: --platforms|-p <platforms> (comma-separated), followed by optional tags.
-    PLATFORMS=""
-    if [ "$#" -gt 0 ] && { [ "$1" = "--platforms" ] || [ "$1" = "-p" ]; }; then
-      shift || true
-      if [ "$#" -eq 0 ]; then
-        echo "Missing value for --platforms" >&2
-        usage
+    # Remaining args are optional tags (space-separated). To pass extra
+    # arguments to `docker build`, append a `--` separator and list them.
+    # Example: cf-auth-sim tag1 tag2 -- --platform linux/amd64,linux/arm64 --pull
+    DOCKER_EXTRA_ARGS=()
+    tags=()
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "--" ]; then
+        shift || true
+        DOCKER_EXTRA_ARGS=("$@")
+        break
       fi
-      PLATFORMS="$1"
+      tags+=("$1")
       shift || true
-    fi
-
-    # Remaining args are optional tags (space-separated). Default to 'latest'.
-    if [ "$#" -eq 0 ]; then
+    done
+    if [ "${#tags[@]}" -eq 0 ]; then
       tags=("latest")
-    else
-      tags=("$@")
     fi
 
     echo "Building docker image 'keycloak-cloudfront-auth-simulator' with tags: ${tags[*]}"
-    if [ -n "${PLATFORMS}" ]; then
-      echo "  platforms: ${PLATFORMS}"
-      PLATFORM_ARG=(--platform "${PLATFORMS}")
-    else
-      PLATFORM_ARG=()
+    if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
+      echo "  docker build extra args: ${DOCKER_EXTRA_ARGS[*]}"
     fi
 
     build_tag_args=()
@@ -105,8 +101,8 @@ case "$1" in
   if [ "${#PROGRESS_ARG[@]}" -gt 0 ]; then
     docker_args+=("${PROGRESS_ARG[@]}")
   fi
-  if [ "${#PLATFORM_ARG[@]}" -gt 0 ]; then
-    docker_args+=("${PLATFORM_ARG[@]}")
+  if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
+    docker_args+=("${DOCKER_EXTRA_ARGS[@]}")
   fi
   docker build "${docker_args[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
     ;;
@@ -122,23 +118,22 @@ case "$1" in
     # consume KC_VERSION so remaining args are optional tags
     shift || true
 
-    # Optional flag: --platforms|-p <platforms> (comma-separated), followed by optional tags.
-    PLATFORMS=""
-    if [ "$#" -gt 0 ] && { [ "$1" = "--platforms" ] || [ "$1" = "-p" ]; }; then
-      shift || true
-      if [ "$#" -eq 0 ]; then
-        echo "Missing value for --platforms" >&2
-        usage
+    # Remaining args are optional tags (space-separated). To pass extra
+    # arguments to `docker build`, append a `--` separator and list them.
+    # Example: demo 26.3 tag1 -- --platform linux/amd64,linux/arm64 --pull
+    DOCKER_EXTRA_ARGS=()
+    tags=()
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "--" ]; then
+        shift || true
+        DOCKER_EXTRA_ARGS=("$@")
+        break
       fi
-      PLATFORMS="$1"
+      tags+=("$1")
       shift || true
-    fi
-
-    # Remaining args are optional tags (space-separated). Default to 'latest'.
-    if [ "$#" -eq 0 ]; then
+    done
+    if [ "${#tags[@]}" -eq 0 ]; then
       tags=("latest")
-    else
-      tags=("$@")
     fi
 
     if ! [[ "$KC_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
@@ -182,11 +177,8 @@ case "$1" in
   echo "Building docker image 'keycloak-cloudfront-auth-demo' with tags: ${tags[*]}"
   echo "  KC_VERSION=$KC_VERSION"
   echo "  PROVIDER_JAR_NAME=$PROVIDER_JAR_NAME"
-  if [ -n "${PLATFORMS}" ]; then
-    echo "  platforms: ${PLATFORMS}"
-    PLATFORM_ARG=(--platform "${PLATFORMS}")
-  else
-    PLATFORM_ARG=()
+  if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
+    echo "  docker build extra args: ${DOCKER_EXTRA_ARGS[*]}"
   fi
 
   # Ensure keycloak-config-cli jar is available in lib/ (download if needed)
@@ -205,8 +197,8 @@ case "$1" in
     if [ "${#PROGRESS_ARG[@]}" -gt 0 ]; then
       docker_args+=("${PROGRESS_ARG[@]}")
     fi
-    if [ "${#PLATFORM_ARG[@]}" -gt 0 ]; then
-      docker_args+=("${PLATFORM_ARG[@]}")
+    if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
+      docker_args+=("${DOCKER_EXTRA_ARGS[@]}")
     fi
     docker build "${docker_args[@]}" -f docker/demo/Dockerfile \
       --build-arg KC_VERSION="$KC_VERSION" \
