@@ -18,7 +18,7 @@ on:
         required: false
         default: false
         type: boolean
-      build-demo-image:
+      build_demo_image:
         description: 'Build demo Docker image'
         required: false
         default: true
@@ -96,7 +96,7 @@ jobs:
 
       - name: Build demo images per Keycloak version
         id: build_images
-        if: ${{ inputs.build-demo-image == 'true' || inputs.build-demo-image == 'True' }}
+        if: ${{ inputs.build_demo_image == 'true' || inputs.build_demo_image == 'True' }}
         run: |
           set -euo pipefail
           OWNER="${{ github.repository_owner }}"
@@ -130,7 +130,7 @@ jobs:
           echo "newest_kc_version=$NEWEST" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
-        if: ${{ inputs.build-demo-image == 'true' || inputs.build-demo-image == 'True' }}
+        if: ${{ inputs.build_demo_image == 'true' || inputs.build_demo_image == 'True' }}
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
@@ -138,7 +138,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Tag and push per-version images to GHCR
-        if: ${{ inputs.build-demo-image == 'true' || inputs.build-demo-image == 'True' }}
+        if: ${{ inputs.build_demo_image == 'true' || inputs.build_demo_image == 'True' }}
         run: |
           set -euo pipefail
           OWNER="${{ github.repository_owner }}"
@@ -203,7 +203,7 @@ jobs:
           done
 
       - name: Output published image
-        if: ${{ inputs.build-demo-image == 'true' || inputs.build-demo-image == 'True' }}
+        if: ${{ inputs.build_demo_image == 'true' || inputs.build_demo_image == 'True' }}
         run: |
           OWNER="${{ github.repository_owner }}"
           IMAGE_NAME="keycloak-cloudfront-auth-demo"
