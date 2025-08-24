@@ -31,7 +31,7 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    name: Build JAR, build demo image and publish to GHCR + GitHub Release
+    name: Build & Publish
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -185,7 +185,7 @@ jobs:
             Keycloak versions included: ${{ steps.discover.outputs.versions }}
             Commit: ${{ github.sha }}
           draft: false
-          prerelease: ${{ inputs.latest != 'true' && inputs.latest != 'True' }}
+          prerelease: ${{ inputs.latest != 'true' }}
 
       - name: Upload provider JARs to release
         env:
