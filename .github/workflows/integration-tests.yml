@@ -40,12 +40,6 @@ jobs:
       - name: Start Docker services
         run: docker info
 
-      - name: Build Docker images
-        run: |
-          # Build Docker images
-          echo "Build cf-auth-sim image"
-          ./run.sh docker-build cf-auth-sim
-
       - name: Build and run integration tests for Keycloak ${{ env.KEYCLOAK_VERSIONS }}
         run: ./run.sh build -t --keep-containers=never ${KEYCLOAK_VERSIONS}
 
@@ -75,6 +69,14 @@ jobs:
             target/failsafe-reports/
             target/surefire-reports/
           retention-days: 7
+
+      - name: Test Build Docker images
+        run: |
+          # Test Build Docker images
+          echo "Build cf-auth-sim image"
+          ./run.sh docker-build cf-auth-sim
+          echo "Build kc-demo image"
+          ./run.sh docker-build kc-demo
 
       - name: Test Summary
         if: always()

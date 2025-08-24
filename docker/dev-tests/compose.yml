@@ -36,7 +36,7 @@ services:
 
 
   cf-auth-sim:
-    image: keycloak-cloudfront-auth-simulator:latest # Use kca cf-auth-sim img for installed luarocks dependencies
+    image: ghcr.io/jul-m/keycloak-cloudfront-auth-simulator:latest # Use kca cf-auth-sim img for installed luarocks dependencies
     container_name: kc-cloudfront-auth_cf-auth-sim
     environment:
       - DEBUG_PAGE_NO_AUTH=${KCA_DEBUG_PAGE_NO_AUTH:-on_error}  # always, never, or on_error

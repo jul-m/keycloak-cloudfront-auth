@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag to publish (e.g. 1.0, rc, ci-123)'
+        description: 'Image tag to publish (ex: 1.0.0, dev)'
         required: true
         default: 'dev'
       latest:
-        description: 'Also push tag "latest" (checkbox)'
+        description: 'latest'
         required: false
         default: false
         type: boolean
@@ -29,9 +29,10 @@ jobs:
         run: |
           chmod +x ./run.sh
 
-      - name: Build image with run.sh
+      - name: Build image with ./run.sh docker-build cf-auth-sim
         id: build
         run: |
+          # Build image with ./run.sh docker-build cf-auth-sim
           # Compose tags list: always include the provided tag; optionally include 'latest'
           TAG_INPUT="${{ inputs.tag }}"
           TAGS="$TAG_INPUT"

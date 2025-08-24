@@ -19,7 +19,7 @@ services:
       - start-dev
 
   cf-auth-sim:
-    image: keycloak-cloudfront-auth-simulator:latest
+    image: ghcr.io/jul-m/keycloak-cloudfront-auth-simulator:latest
     container_name: kca-demo_cf-auth-sim
     environment:
       - DEBUG_PAGE_NO_AUTH=${KCA_DEBUG_PAGE_NO_AUTH:-on_error}  # always, never or on_error
