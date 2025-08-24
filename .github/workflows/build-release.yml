@@ -160,7 +160,9 @@ jobs:
 
       - name: Create GitHub release for tag (includes all built JARs)
         id: create_release
-        uses: actions/create-release@v1
+        uses: comnoco/create-release-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ inputs.tag }}
           release_name: ${{ inputs.tag }}
@@ -169,7 +171,7 @@ jobs:
             Keycloak versions included: ${{ steps.discover.outputs.versions }}
             Commit: ${{ github.sha }}
           draft: false
-          prerelease: false
+          prerelease: ${{ inputs.latest != 'true' || inputs.latest != 'True' }}
 
       - name: Upload provider JARs to release
         env:
@@ -183,34 +185,6 @@ jobs:
           for j in "${JARS[@]}"; do
             filename=$(basename "$j")
             echo "Uploading $j as $filename to release"
-            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/java-archive" --data-binary @"$j" "${UPLOAD_URL_BASE}?name=${filename}"
-          done
-
-      - name: Optionally create "latest" release
-        if: ${{ inputs.latest == 'true' || inputs.latest == 'True' }}
-        id: create_latest_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: latest
-          release_name: latest
-          body: |
-            Automated latest release for keycloak-cloudfront-auth.
-            Points to same commit as ${{ inputs.tag }} (automatically created by workflow).
-          draft: false
-          prerelease: false
-
-      - name: Optionally upload provider JARs to "latest" release
-        if: ${{ inputs.latest == 'true' || inputs.latest == 'True' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          UPLOAD_URL='${{ steps.create_latest_release.outputs.upload_url }}'
-          UPLOAD_URL_BASE="${UPLOAD_URL%%{*}"
-          IFS=' ' read -r -a JARS <<< "${{ steps.discover.outputs.jars }}"
-          for j in "${JARS[@]}"; do
-            filename=$(basename "$j")
-            echo "Uploading $j as $filename to latest release"
             curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/java-archive" --data-binary @"$j" "${UPLOAD_URL_BASE}?name=${filename}"
           done
 

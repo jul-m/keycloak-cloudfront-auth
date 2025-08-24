@@ -2,7 +2,7 @@ name: keycloak-cloudfront-auth-demo
 
 services:
   keycloak:
-    image: keycloak-cloudfront-auth-demo:${KCA_KC_VERSION:-latest}
+    image: ghcr.io/jul-m/keycloak-cloudfront-auth-demo:${VERSION:-latest}
     container_name: kca-demo_keycloak
     environment:
       - KEYCLOAK_ADMIN=${KCA_KC_ADMIN_USER:-admin}                   # KC <= 25.0
