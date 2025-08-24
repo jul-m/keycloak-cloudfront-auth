@@ -12,11 +12,15 @@ fi
 
 usage() {
   cat <<EOF
-Usage: $DISPLAY_NAME <stack> [sub-command] [options] [KEYCLOAK_VERSION] [-- extra docker-compose args]
+Usage: $DISPLAY_NAME <stack> [sub-command] [options] [version-token] [-- extra docker-compose args]
 
 Stacks:
-  demo       Run the demo stack (docker/demo/compose.yml)
-  dev-tests  Run the dev-tests stack (docker/dev-tests/compose.yml)
+  demo       Run the demo stack (docker/demo/compose.yml).
+             Optional version-token sets the demo image tag and will be exported
+             to the compose environment as VERSION (used by docker/demo/compose.yml).
+  dev-tests  Run the dev-tests stack (docker/dev-tests/compose.yml).
+             Optional version-token sets the Keycloak version and will be exported
+             as KCA_KC_VERSION (used to fetch keycloak-config-cli when needed).
 
 Sub-commands:
   up         Start the stack (default)
@@ -35,7 +39,8 @@ Examples:
   $DISPLAY_NAME dev-tests up 26.3
   $DISPLAY_NAME dev-tests up -d 26.3
   $DISPLAY_NAME dev-tests down
-  $DISPLAY_NAME demo up --build
+  $DISPLAY_NAME demo up 1.2.3
+  $DISPLAY_NAME demo up -d 1.2.3 --build
 EOF
   exit 2
 }
@@ -68,9 +73,12 @@ if [ "$#" -gt 0 ] && ( [ "$1" = "up" ] || [ "$1" = "down" ] ); then
   shift
 fi
 
-# Parse remaining args: accept optional -d/--detach and an optional KEYCLOAK_VERSION
+# Parse remaining args: accept optional -d/--detach and an optional version token
+# For the demo stack this token is the demo image tag and will be exported as VERSION.
+# For the dev-tests stack this token is a Keycloak version and will be exported as KCA_KC_VERSION.
 DETACH=false
 KCA_KC_VERSION=""
+VERSION=""
 COMPOSE_ARGS=()
 # Store explicit variable assignments provided via --vars
 EXTRA_VARS=()
@@ -104,8 +112,15 @@ while [ $# -gt 0 ]; do
       done
       ;;
     *)
-      if { [[ "$arg" =~ ^([0-9]+)(\.[0-9]+)?$ ]] || [ "$arg" = "all" ]; } && [ -z "$KCA_KC_VERSION" ]; then
-        KCA_KC_VERSION="$arg"
+      # If the token does NOT start with '-' and we don't already have a version token,
+      # treat it as the version token. Otherwise forward to compose args.
+      if [[ "$arg" != -* ]] && [ -z "$KCA_KC_VERSION" ] && [ -z "$VERSION" ]; then
+        # If we're running the demo stack, set VERSION (demo image tag). Otherwise set KCA_KC_VERSION.
+        if [ "$TARGET_COMPOSE_FILE" = "$REPO_ROOT/docker/demo/compose.yml" ]; then
+          VERSION="$arg"
+        else
+          KCA_KC_VERSION="$arg"
+        fi
       else
         COMPOSE_ARGS+=("$arg")
       fi
@@ -168,7 +183,12 @@ if [ ${#EXTRA_VARS[@]} -gt 0 ]; then
   done
 fi
 
-# Export KCA_KC_VERSION to environment for the compose process if provided
+# Export VERSION or KCA_KC_VERSION to environment for the compose process if provided
+if [ -n "$VERSION" ]; then
+  export VERSION
+  echo "Using VERSION=$VERSION"
+fi
+
 if [ -n "$KCA_KC_VERSION" ]; then
   export KCA_KC_VERSION
   echo "Using KCA_KC_VERSION=$KCA_KC_VERSION"

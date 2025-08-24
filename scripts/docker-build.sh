@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure arrays used later are defined to avoid "unbound variable" with set -u
+PROGRESS_ARG=()
+PLATFORM_ARG=()
+
 # Friendly display name for usage. Prefer PARENT_CMD when provided by a wrapper
 # so delegated help shows how the wrapper was invoked. Otherwise show a
 # relative './scripts/docker-build.sh' when running from repo root.
@@ -28,16 +32,20 @@ usage() {
 Keycloak CloudFront Auth - Build Tools Docker Images
 
 Usage: $DISPLAY_NAME <subcommand> <args>
-Subcommands: kc-demo, cf-auth-sim, help
+Subcommands: demo, cf-auth-sim, help
 
 $DISPLAY_NAME cf-auth-sim [<tags>...]
   Build the CloudFront auth simulator image (docker/cf-auth-sim).
   Optional <tags> list (space-separated). Default: "latest".
+  Optional flag: --platforms <platforms> (or -p) to pass to 'docker build --platform'.
+    Example: --platforms linux/amd64,linux/arm64 to build for amd64 and aarch64.
 
-$DISPLAY_NAME kc-demo <KC_VERSION> [<tags>...]
+$DISPLAY_NAME demo <KC_VERSION> [<tags>...]
   Build preconfigured Keycloak image for keycloak-cloudfront-auth Demo (docker/demo/Dockerfile).
   <KC_VERSION> must be in format XX.Y and provider version build must exist in dist/. Example: "26.3"
   Optional <tags> list (space-separated). Default: "latest".
+  Optional flag: --platforms <platforms> (or -p) to pass to 'docker build --platform'.
+    Example: --platforms linux/amd64,linux/arm64 to build for amd64 and aarch64.
 
 $DISPLAY_NAME help
     Show this help (also available as -h or --help)
@@ -57,6 +65,18 @@ case "$1" in
   
   cf-auth-sim)
     shift || true
+    # Optional flag: --platforms|-p <platforms> (comma-separated), followed by optional tags.
+    PLATFORMS=""
+    if [ "$#" -gt 0 ] && { [ "$1" = "--platforms" ] || [ "$1" = "-p" ]; }; then
+      shift || true
+      if [ "$#" -eq 0 ]; then
+        echo "Missing value for --platforms" >&2
+        usage
+      fi
+      PLATFORMS="$1"
+      shift || true
+    fi
+
     # Remaining args are optional tags (space-separated). Default to 'latest'.
     if [ "$#" -eq 0 ]; then
       tags=("latest")
@@ -65,6 +85,12 @@ case "$1" in
     fi
 
     echo "Building docker image 'keycloak-cloudfront-auth-simulator' with tags: ${tags[*]}"
+    if [ -n "${PLATFORMS}" ]; then
+      echo "  platforms: ${PLATFORMS}"
+      PLATFORM_ARG=(--platform "${PLATFORMS}")
+    else
+      PLATFORM_ARG=()
+    fi
 
     build_tag_args=()
     for t in "${tags[@]}"; do
@@ -75,19 +101,38 @@ case "$1" in
       build_tag_args+=( -t "keycloak-cloudfront-auth-simulator:${t}" )
     done
 
-  docker build "${build_tag_args[@]}" "${PROGRESS_ARG[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
+  docker_args=("${build_tag_args[@]}")
+  if [ "${#PROGRESS_ARG[@]}" -gt 0 ]; then
+    docker_args+=("${PROGRESS_ARG[@]}")
+  fi
+  if [ "${#PLATFORM_ARG[@]}" -gt 0 ]; then
+    docker_args+=("${PLATFORM_ARG[@]}")
+  fi
+  docker build "${docker_args[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
     ;;
   
-  kc-demo)
+  demo)
     shift
     KC_VERSION="${1:-}"
     if [ -z "$KC_VERSION" ]; then
-      echo "kc-demo requires a KC_VERSION argument." >&2
+      echo "demo requires a KC_VERSION argument." >&2
       usage
     fi
 
     # consume KC_VERSION so remaining args are optional tags
     shift || true
+
+    # Optional flag: --platforms|-p <platforms> (comma-separated), followed by optional tags.
+    PLATFORMS=""
+    if [ "$#" -gt 0 ] && { [ "$1" = "--platforms" ] || [ "$1" = "-p" ]; }; then
+      shift || true
+      if [ "$#" -eq 0 ]; then
+        echo "Missing value for --platforms" >&2
+        usage
+      fi
+      PLATFORMS="$1"
+      shift || true
+    fi
 
     # Remaining args are optional tags (space-separated). Default to 'latest'.
     if [ "$#" -eq 0 ]; then
@@ -137,6 +182,12 @@ case "$1" in
   echo "Building docker image 'keycloak-cloudfront-auth-demo' with tags: ${tags[*]}"
   echo "  KC_VERSION=$KC_VERSION"
   echo "  PROVIDER_JAR_NAME=$PROVIDER_JAR_NAME"
+  if [ -n "${PLATFORMS}" ]; then
+    echo "  platforms: ${PLATFORMS}"
+    PLATFORM_ARG=(--platform "${PLATFORMS}")
+  else
+    PLATFORM_ARG=()
+  fi
 
   # Ensure keycloak-config-cli jar is available in lib/ (download if needed)
   echo "Fetching keycloak-config-cli for Keycloak $KC_VERSION into lib/... if missing"
@@ -150,7 +201,14 @@ case "$1" in
       build_tag_args+=( -t "keycloak-cloudfront-auth-demo:${t}" )
     done
 
-    docker build "${build_tag_args[@]}" "${PROGRESS_ARG[@]}" -f docker/demo/Dockerfile \
+    docker_args=("${build_tag_args[@]}")
+    if [ "${#PROGRESS_ARG[@]}" -gt 0 ]; then
+      docker_args+=("${PROGRESS_ARG[@]}")
+    fi
+    if [ "${#PLATFORM_ARG[@]}" -gt 0 ]; then
+      docker_args+=("${PLATFORM_ARG[@]}")
+    fi
+    docker build "${docker_args[@]}" -f docker/demo/Dockerfile \
       --build-arg KC_VERSION="$KC_VERSION" \
       --build-arg PROVIDER_JAR_NAME="$PROVIDER_JAR_NAME" \
       .

@@ -76,13 +76,13 @@ jobs:
           echo "Build cf-auth-sim image"
           ./run.sh docker-build cf-auth-sim
 
-          echo "Build kc-demo images for each built Keycloak version"
+          echo "Build demo images for each built Keycloak version"
           set -euo pipefail
           # Collect built JARs and extract KC versions
           shopt -s nullglob || true
           jars=( dist/keycloak-cloudfront-auth-*-KC*.jar )
           if [ "${#jars[@]}" -eq 0 ]; then
-            echo "No built JARs found in dist/; skipping kc-demo image builds"
+            echo "No built JARs found in dist/; skipping demo image builds"
           else
             versions=()
             for j in "${jars[@]}"; do
@@ -95,8 +95,8 @@ jobs:
             IFS=$'\n' unique_versions=($(printf "%s\n" "${versions[@]}" | sort -u -V))
             unset IFS
             for ver in "${unique_versions[@]}"; do
-              echo "Building kc-demo for Keycloak $ver"
-              ./run.sh docker-build kc-demo "$ver"
+              echo "Building demo for Keycloak $ver"
+              ./run.sh docker-build demo "$ver"
             done
           fi
 
