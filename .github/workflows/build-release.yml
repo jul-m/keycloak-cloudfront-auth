@@ -9,12 +9,12 @@ on:
         default: 'all'
         type: string
       tag:
-        description: 'Release / image tag to publish (ex: 1.0.0, dev)'
+        description: 'Tag (ex: 1.0.0, dev)'
         required: true
         default: 'dev'
         type: string
       latest:
-        description: 'Also publish KC<version>-latest per-version and add overall latest tag to newest KC image'
+        description: 'latest'
         required: false
         default: false
         type: boolean
