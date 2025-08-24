@@ -75,8 +75,30 @@ jobs:
           # Test Build Docker images
           echo "Build cf-auth-sim image"
           ./run.sh docker-build cf-auth-sim
-          echo "Build kc-demo image"
-          ./run.sh docker-build kc-demo
+
+          echo "Build kc-demo images for each built Keycloak version"
+          set -euo pipefail
+          # Collect built JARs and extract KC versions
+          shopt -s nullglob || true
+          jars=( dist/keycloak-cloudfront-auth-*-KC*.jar )
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No built JARs found in dist/; skipping kc-demo image builds"
+          else
+            versions=()
+            for j in "${jars[@]}"; do
+              v=$(basename "$j" | sed -n 's/.*-KC\([0-9]\+\.[0-9]\+\).*/\1/p')
+              if [ -n "$v" ]; then
+                versions+=("$v")
+              fi
+            done
+            # unique & sorted
+            IFS=$'\n' unique_versions=($(printf "%s\n" "${versions[@]}" | sort -u -V))
+            unset IFS
+            for ver in "${unique_versions[@]}"; do
+              echo "Building kc-demo for Keycloak $ver"
+              ./run.sh docker-build kc-demo "$ver"
+            done
+          fi
 
       - name: Test Summary
         if: always()

@@ -1,0 +1,221 @@
+name: Build and publish kc-demo images and JARs
+
+on:
+  workflow_dispatch:
+    inputs:
+      kc_versions:
+        description: 'Keycloak versions to build (comma-separated, or "all")'
+        required: false
+        default: 'all'
+        type: string
+      tag:
+        description: 'Release / image tag to publish (ex: 1.0.0, dev)'
+        required: true
+        default: 'dev'
+        type: string
+      latest:
+        description: 'Also publish KC<version>-latest per-version and add overall latest tag to newest KC image'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    name: Build JAR, build kc-demo image and publish to GHCR + GitHub Release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Ensure run.sh is executable
+        run: |
+          chmod +x ./run.sh
+
+      - name: Build provider JAR(s) for requested Keycloak versions
+        id: build_jars
+        run: |
+          set -euo pipefail
+          KC_INPUT="${{ inputs.kc_versions }}"
+          if [ -z "$KC_INPUT" ]; then
+            KC_INPUT="all"
+          fi
+          # Convert comma-separated to space-separated
+          KC_ARGS=$(echo "$KC_INPUT" | tr ',' ' ')
+          echo "Running: ./run.sh build $KC_ARGS"
+          ./run.sh build $KC_ARGS
+          echo "build_done=true" >> $GITHUB_OUTPUT || true
+
+      - name: Discover built JARs and KC versions
+        id: discover
+        run: |
+          set -euo pipefail
+          shopt -s nullglob || true
+          jars=( dist/keycloak-cloudfront-auth-*-KC*.jar )
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No built JARs found in dist/" >&2
+            ls -la dist/ || true
+            exit 1
+          fi
+          echo "Found JARs:"
+          for j in "${jars[@]}"; do
+            echo "  $j"
+          done
+
+          # Extract versions like 26.3 from filenames and collect unique
+          versions=()
+          for j in "${jars[@]}"; do
+            v=$(basename "$j" | sed -n 's/.*-KC\([0-9]\+[.][0-9]\+\).*/\1/p')
+            if [ -n "$v" ]; then
+              versions+=("$v")
+            fi
+          done
+          # unique
+          IFS=$'\n' unique_versions=($(printf "%s\n" "${versions[@]}" | sort -u -V))
+          unset IFS
+          echo "versions=${unique_versions[*]}" >> "$GITHUB_OUTPUT"
+          echo "jars=${jars[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Build kc-demo images per Keycloak version
+        id: build_images
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          TAG_INPUT="${{ inputs.tag }}"
+          LATEST_FLAG="${{ inputs.latest }}"
+          # Read discovered versions from previous step
+          IFS=' ' read -r -a VERSIONS <<< "${{ steps.discover.outputs.versions }}"
+          if [ "${#VERSIONS[@]}" -eq 0 ]; then
+            echo "No versions discovered to build images for" >&2
+            exit 1
+          fi
+
+          echo "Versions to build images for: ${VERSIONS[*]}"
+
+          # Build & tag images per version
+          for ver in "${VERSIONS[@]}"; do
+            TAG1="KC${ver}-${TAG_INPUT}"
+            TAGS="$TAG1"
+            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+              TAGS="$TAGS KC${ver}-latest"
+            fi
+            echo "Building image for Keycloak $ver with tags: $TAGS"
+            ./run.sh docker-build kc-demo "$ver" $TAGS
+          done
+
+          # Determine newest KC version for optional overall 'latest' tag
+          NEWEST=$(printf "%s\n" "${VERSIONS[@]}" | sort -V | tail -n1)
+          echo "newest_kc_version=$NEWEST" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push per-version images to GHCR
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          IMAGE_NAME="keycloak-cloudfront-auth-demo"
+          TAG_BASE="${{ inputs.tag }}"
+          LATEST_FLAG="${{ inputs.latest }}"
+
+          IFS=' ' read -r -a VERSIONS <<< "${{ steps.discover.outputs.versions }}"
+          NEWEST="${{ steps.build_images.outputs.newest_kc_version }}"
+
+          for ver in "${VERSIONS[@]}"; do
+            # push KC<ver>-<tag>
+            TAG1="KC${ver}-${TAG_BASE}"
+            docker tag ${IMAGE_NAME}:${TAG1} ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG1}
+            docker push ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG1}
+
+            # Optionally push KC<ver>-latest
+            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+              TAG2="KC${ver}-latest"
+              docker tag ${IMAGE_NAME}:${TAG2} ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG2}
+              docker push ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG2}
+            fi
+          done
+
+          # Optionally tag the newest KC image as overall 'latest'
+          if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+            if [ -n "$NEWEST" ]; then
+              NEWEST_TAG="KC${NEWEST}-${TAG_BASE}"
+              docker tag ${IMAGE_NAME}:${NEWEST_TAG} ghcr.io/${OWNER}/${IMAGE_NAME}:latest
+              docker push ghcr.io/${OWNER}/${IMAGE_NAME}:latest
+            fi
+          fi
+
+      - name: Create GitHub release for tag (includes all built JARs)
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ inputs.tag }}
+          release_name: ${{ inputs.tag }}
+          body: |
+            Automated release for keycloak-cloudfront-auth.
+            Keycloak versions included: ${{ steps.discover.outputs.versions }}
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+      - name: Upload provider JARs to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          UPLOAD_URL='${{ steps.create_release.outputs.upload_url }}'
+          # UPLOAD_URL contains a templated {?name,label} suffix; strip it for direct use
+          UPLOAD_URL_BASE="${UPLOAD_URL%%{*}"
+          IFS=' ' read -r -a JARS <<< "${{ steps.discover.outputs.jars }}"
+          for j in "${JARS[@]}"; do
+            filename=$(basename "$j")
+            echo "Uploading $j as $filename to release"
+            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/java-archive" --data-binary @"$j" "${UPLOAD_URL_BASE}?name=${filename}"
+          done
+
+      - name: Optionally create "latest" release
+        if: ${{ inputs.latest == 'true' || inputs.latest == 'True' }}
+        id: create_latest_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: latest
+          release_name: latest
+          body: |
+            Automated latest release for keycloak-cloudfront-auth.
+            Points to same commit as ${{ inputs.tag }} (automatically created by workflow).
+          draft: false
+          prerelease: false
+
+      - name: Optionally upload provider JARs to "latest" release
+        if: ${{ inputs.latest == 'true' || inputs.latest == 'True' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          UPLOAD_URL='${{ steps.create_latest_release.outputs.upload_url }}'
+          UPLOAD_URL_BASE="${UPLOAD_URL%%{*}"
+          IFS=' ' read -r -a JARS <<< "${{ steps.discover.outputs.jars }}"
+          for j in "${JARS[@]}"; do
+            filename=$(basename "$j")
+            echo "Uploading $j as $filename to latest release"
+            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/java-archive" --data-binary @"$j" "${UPLOAD_URL_BASE}?name=${filename}"
+          done
+
+      - name: Output published image
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          IMAGE_NAME="keycloak-cloudfront-auth-demo"
+          echo "published=ghcr.io/${OWNER}/${IMAGE_NAME}:KC${{ steps.build_images.outputs.newest_kc_version }}-${{ inputs.tag }}" >> $GITHUB_OUTPUT
