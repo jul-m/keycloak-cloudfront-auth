@@ -1,142 +1,185 @@
-# Keycloak CloudFront Auth — intégration simple Keycloak ↔ CloudFront
+# Keycloak CloudFront Auth Extension
 
-Ce projet fournit une extension Keycloak (un « provider ») qui permet de protéger des sites ou assets servis par Amazon CloudFront en déléguant l'authentification à Keycloak.
+> Protégez simplement et nativement vos applications publiées sur AWS CloudFront avec Keycloak.
 
-## Pourquoi utiliser cette extension ? (problème & bénéfices)
+## Présentation
 
-Problème courant : vous avez des ressources statiques (site, images, vidéos) servies par CloudFront et vous souhaitez restreindre l'accès à certains utilisateurs ou groupes sans ré-implémenter un mécanisme d'authentification dans votre application.
+### Fonctionalités principales
+- [x] Génération de "cookies CloudFront signés" pour l'accès aux ressources protégées.
+- [x] Gestion du flux d'authentification entre Keycloak et CloudFront (login, callback, erreurs).
+- [x] Ajout optionnel d'un cookie contenant l'access-token JWT de l'utilisateur et client OpenID à destination de l'application.
 
-Ce que cette extension vous apporte :
+### Avantages
+- Intégration transparente et rapide avec Keycloak via un client OpenID classique.
+- Pas de fonctions CloudFront ou Lambda@Edge nécessaires (protection native via cookies signés).
+- Possibilité de protéger la distribution complète (assets, API...) en déportant la gestion de l'authentification vers Keycloak.
+- Intégration de l'authentification OpenID simplifiée au sein de l'application (flux d'authentification déjà géré avec mise à disposition d'un access-token JWT via un cookie configurable).
 
-- Intégration transparente avec Keycloak : utilisez votre instance Keycloak existante (realm, clients, sessions) pour authentifier les visiteurs.
-- Pas de serveur d'application supplémentaire : CloudFront redirige vers Keycloak puis l'extension émet des cookies signés CloudFront, permettant l'accès aux ressources protégées.
-- Sécurité : la signature des cookies utilise une clé RSA (format PEM) — la clé privée reste côté serveur et n'est pas exposée.
-- Déploiement simple pour tests : un environnement Docker fourni permet de tester rapidement le flux.
+Le fonctionnement de l'extension est détaillé dans la section [Fonctionnement](#fonctionnement).
 
-En résumé : vous obtenez une solution prête à l'emploi pour protéger du contenu CloudFront avec Keycloak, sans modifier votre contenu statique ni ajouter une couche applicative complexe.
 
-## Quickstart (rapide, pour se lancer)
+## Démarrage rapide
+### Démonstration
 
-1. Construisez le jar :
-
-```bash
-mvn clean package
-```
-
-2. Déployez le jar dans votre instance Keycloak (dossier `providers` ou via le mécanisme d'extensions selon votre version Keycloak).
-
-3. Configurez CloudFront :
-   - Ajoutez un comportement (`behavior`) pour `/.cdn-auth/*` et désactivez le cache sur ce comportement.
-   - Ajoutez une Custom Error Response 403 qui redirige vers `/.cdn-auth/_cf_redirect_403` (rendue en HTTP 200).
-
-4. Fournissez à l'extension la clé privée CloudFront (PEM) via la variable d'environnement `CLOUDFRONT_PRIVATE_KEY` et l'ID de clé publique (header `kc-cf-sign-key-id`).
-
-5. Testez : lorsqu'un utilisateur rencontre un 403, CloudFront lancera le flux d'authentification via Keycloak et l'extension émettra les cookies CloudFront signés.
-
-Pour un environnement de test prêt-à-l'emploi, lancez :
+Pour avoir un aperçu du fonctionnement de l'extension, un environnement de démo Docker est disponible via un fichier `compose.yml`. Cet environnement contient :
+- Un conteneur Keycloak préconfiguré avec l'extension.
+- Un conteneur "CloudFront Auth Simulator", afin de tester sans déployment sur AWS et d'obtenir des informations détaillées sur l'authentification.
 
 ```bash
-cd docker/dev-tests
-docker-compose up --build
+curl -fsSL https://raw.githubusercontent.com/jul-m/keycloak-cloudfront-auth/refs/heads/main/docker/demo/compose.yml | docker compose -f - up -d
 ```
 
-Le dossier `docker/dev-tests` contient un exemple de configuration et un jar de provider préconstruit pour démarrer vite.
+Rendez-vous sur la page [démonstration](docker/dev-tests) pour la procédure complète.
 
-## Flux de bout en bout (explication simple)
 
-Le diagramme ci-dessous utilise trois colonnes (vertical lines) pour représenter les acteurs principaux : l'utilisateur (User), CloudFront (CF) et l'application Keycloak + extension (App). Le flux décrit le chemin simple depuis la demande initiale jusqu'à l'émission des cookies signés qui donnent accès à l'asset.
+### Installation
+- Téléchargez la dernière version de l'extension à partir de la page de [release](https://github.com/jul-m/keycloak-cloudfront-auth/releases) (sélectionnez le fichier JAR correspondant à votre version de Keycloak).
+- Copiez le fichier JAR dans le dossier `providers/`.
+- Si nécéssaire, modifiez la configuration globale de l'extension (via variables d'environnement, fichier `conf/keycloak.conf` ou paramètres en ligne de commande). Consultez la section [Configuration Globale](#configuration-globale).
+- Redémarrez Keycloak.
+- Consultez la section [Points clés de configuration](#points-clés-de-configuration-ce-quil-faut-fournir) pour réaliser la configuration nécéssaire sur Keycloak et CloudFront.
 
-ASCII diagramme (colonnes) :
 
-```
-User                CloudFront                 App
- |                     |                        |
- | 1) GET /asset       |                        |
- |-------------------->|                        |
- |                     | 2) 403 -> redirect     |
- |                     |----------------------->|
- |                     |                        | 3) Serve redirect page -> redirect to login
- |                     |                        |<-----------------------|
- | 4) User authenticates at App (Keycloak)
- |<---------------------------------------------------------------|
- |                     |                        |
- | 5) App sets signed CloudFront cookies       |
- |<--------------------|                        |
- | 6) GET /asset (with cookies)               |
- |-------------------->|                        |
- |                     | 7) CloudFront validates cookies and returns asset
- |                     |----------------------->|
- |                     |<-----------------------|
- |                     |                        |
-```
-
-Mermaid sequence (3 colonnes) — adapté pour GitHub :
+## Fonctionnement
+### Flux d'authentification CloudFront
 
 ```mermaid
 sequenceDiagram
-    participant User as User
+    actor User as User
     participant CF as CloudFront
-    participant App as Keycloak+Provider
+    participant KC as Keycloak+Provider
+    participant App as Application (origin)
 
-    User->>CF: 1) GET /asset
-    CF-->>User: 2) 403 (serve /.cdn-auth/_cf_redirect_403)
-    User->>App: 3) Request /.cdn-auth/_cf_redirect_403 (forwarded by CF)
-    App-->>User: 4) Redirect to Keycloak login
-    User->>App: 5) Login & callback to App (code)
-    App->>App: 6) Exchange code, generate signed CloudFront cookies
-    App-->>User: 7) Set-Cookie (signed cookies) + redirect to original asset
-    User->>CF: 8) GET /asset (with signed cookies)
-    CF-->>User: 9) 200 OK (asset delivered)
+    User->>+CF: 1a. GET /index.html (no valid cookies)
+    CF->>-KC: 1b. /.cdn-auth/_cf_redirect_403
+    activate KC
+    KC-->>User: 1c. Return "Redirect to auth service" page (JS or HTML redirection)
+    deactivate KC
+    activate User
+
+    User->>+KC: <br/>2. GET <KC_URL>/protocol/openid-connect/auth (classic OpenID auth). [Not via CloudFront]
+    deactivate User
+    KC-->>-User: 
+    activate User
+    User->>+KC: <br/>3. Login process and receive redirect to /.cdn-auth/callback with code [Not via CloudFront]
+    deactivate User
+    KC-->>-User: 
+
+    activate User
+    User->>+CF: <br/>4a. GET /.cdn-auth/callback with code
+    deactivate User
+    CF->>-KC: 4b. Forward /.cdn-auth/callback with code
+    destroy KC
+    KC-->>User: 4c. Exchange code with signed CloudFront cookies + redirect to original URL
+    activate User
+
+    User->>+CF: 5a. GET /index.html (with signed cookies)
+    deactivate User
+    CF->>-App: 5b. Forward request to origin (App)
+    activate App
+    App-->>User: 5c. 200 OK
+    deactivate App
 ```
 
-> Astuce : sur GitHub le bloc Mermaid s'affiche automatiquement dans le rendu Markdown ; sinon, le diagramme ASCII reste lisible pour la plupart des lecteurs.
+Contexte : 1 distribution CloudFront avec :
+- Clé RSA du realm Keycloak ajouté dans un groupe de clés.
+- 1 comportement pour `/.cdn-auth/*` vers origine `https://<KC_URL>/cloudfront-auth/`. Accès public.
+- Comportement par défaut (`*`) vers l'origine de l'application. Accès restreint via cookies signés.
+- Réponse erreur personnalisée 403 redirigeant vers `/.cdn-auth/_cf_redirect_403`.
 
-## Points clés de configuration (ce qu'il faut fournir)
 
-- `kc-realm-name` (header envoyé par CloudFront) : le realm Keycloak.
-- `kc-client-id` et `kc-client-secret` (headers) : client Keycloak utilisé pour l'échange OAuth.
-- `kc-cf-sign-key-id` (header) : identifiant public de la clé CloudFront.
-- `CLOUDFRONT_PRIVATE_KEY` (variable d'environnement) : contenu PEM de la clé privée utilisée pour signer les cookies.
+Résumé du fonctionnement:
+- `1`: Requête initiale
+   - `1a`: Client → GET `/index.html` — le navigateur demande la ressource sans cookie signé valide.
+   - `1b`: CloudFront → Ressource protégée, CloudFront génère une erreur 403. La règle de réponse personnalisée redirige en interne vers `/.cdn-auth/_cf_redirect_403`, qui correspond à l'origine Keycloak (le navigateur n'as pas connaissance de la redirection vers Keycloak).
+   - `1c`: Extension → Génère une page HTML contenant une redirection (JavaScript ou meta-refresh) vers l'endpoint OIDC de Keycloak pour le login.
 
-Remarque : ces valeurs peuvent aussi être passées via la configuration SPI de Keycloak selon votre déploiement.
+- `2`: Client → GET `<KC_URL>/protocol/openid-connect/auth` — le navigateur est redirigé vers Keycloak pour le login (flux OIDC standard), via l'URL rééle du serveur Keycloak.
 
-## Fichiers et composants importants
+- `3`: L'utilisateur s'authentifie s'il n'est pas déjà authentifié sur le realm, puis si l'accès est accordé, il est redirigé vers le domaine de l'application, chemin `/.cdn-auth/callback` avec le code d'autorisation.
 
-- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/CloudFrontAuthResource.java` — endpoints exposés par l'extension (redirect, callback, error handling).
-- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/CloudFrontCookieSigner.java` — génération et émission des cookies CloudFront signés.
-- `src/main/resources/html/redirect.ftl` et `error.ftl` — pages FreeMarker rendues par l'extension.
-- `docker/dev-tests/` — compose + mounts pour lancer rapidement Keycloak avec the provider monté.
-- `scripts/build.sh` — script utilitaire pour produire des jars compatibles avec différentes versions de Keycloak.
+- `4`: Callback traité par l'extension
+   - `4a`: Client → Suit la redirection vers `/.cdn-auth/callback` avec le code d'autorisation.
+   - `4b`: CloudFront → Redirige la requête vers l'origine Keycloak, chemin `/cloudfront-auth/.cdn-auth/callback`.
+   - `4c`: Extension → Échange le code d'autorisation contre un token JWT et génère les cookies CloudFront signés avec la clé RSA du realm.
+           Réponse 302 avec redirection vers l'URL d'origine.
+           Comme l'accès à cette page se fait via la distribution CloudFront de l'application, les cookies sont bien ajoutés au domaine de l'application.
 
-## Sécurité & bonnes pratiques
+- `5`: Accès à l'application
+   - `5a`: Client → Suit la redirection vers `/index.html` (avec cookies signés).
+   - `5b`: CloudFront → Les cookies sont validés et la requête est transmise à l'origine.
+   - `5c`: Origine → L'origine envoie la ressource (200 OK) si elle n'est pas en cache sur CloudFront.
 
-- Ne stockez jamais la clé privée dans le dépôt. Utilisez `CLOUDFRONT_PRIVATE_KEY` (secret manager ou variable d'environnement injectée).
-- Vérifiez que l'ID de clé publique (`kc-cf-sign-key-id`) correspond bien à la clé enregistrée côté CloudFront.
-- Limitez les droits du client Keycloak utilisé uniquement à l'échange du code OAuth (principe du moindre privilège).
 
-## Dépannage rapide
+## Configuration
+### Configuration Globale
 
-- Erreur de signature : vérifier le format PEM de `CLOUDFRONT_PRIVATE_KEY` et l'ID de clé.
-- Boucle d'auth : l'extension gère une détection de boucle via le cookie `cloudfront_auth_loop` — si vous observez des redirections infinies, vérifiez la configuration CloudFront et la persistance des cookies.
-- Logs : activez le niveau DEBUG pour le package `fr.julm.keycloak.providers.auth.cloudfront` (cf. `src/main/resources/logging.properties`).
+Certaines options de l'extension sont définies au niveau du système de configuration Keycloak.
+Toutes les options ont une valeur par défaut (affichées ci-dessous) et sont donc optionnelles.
 
-## Tests et développement local
+```properties
+# conf/keycloak.conf:
+spi-realm-restapi-extension-cloudfront-auth-redirect-delay=0
+spi-realm-restapi-extension-cloudfront-auth-redirect-fallback-delay=5
+spi-realm-restapi-extension-cloudfront-auth-display-request-id=true
+spi-realm-restapi-extension-cloudfront-auth-access-roles=cloudfront-access,webapp-access
+spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes=Path=/; HttpOnly
 
-- Build : `mvn clean package`
-- Environnement de test : `docker/dev-tests/docker-compose` (voir `docker/dev-tests/compose.yml`)
-- Tests d'intégration : `./test-integration.sh` (si Docker est disponible)
+# Variables d'environnement:
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=0
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=5
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_DISPLAY_REQUEST_ID=true
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_ACCESS_ROLES=cloudfront-access,webapp-access
+KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_AUTH_COOKIES_ATTRIBUTES=Path=/; HttpOnly
 
-## Prochaines étapes utiles
+# Arguments ligne de commande:
+--spi-realm-restapi-extension-cloudfront-auth-redirect-delay=0
+--spi-realm-restapi-extension-cloudfront-auth-redirect-fallback-delay=5
+--spi-realm-restapi-extension-cloudfront-auth-display-request-id=true
+--spi-realm-restapi-extension-cloudfront-auth-access-roles=cloudfront-access,webapp-access
+--spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes=Path=/; HttpOnly
+```
 
-- Ajouter un petit workflow GitHub Actions pour build+test et afficher un badge dans le README.
-- Générer un exemple de configuration CloudFront (JSON) pour faciliter le déploiement.
+- `spi-realm-restapi-extension-cloudfront-auth-redirect-delay` : Page de redirection vers l'authentification : Délai en secondes avant redirection (via JavaScript). `0` = pas de délai.
+- `spi-realm-restapi-extension-cloudfront-auth-redirect-fallback-delay` : Page de redirection vers l'authentification : Délai en secondes avant redirection de secours (via meta-refresh). `0` = pas de délai.
+- `spi-realm-restapi-extension-cloudfront-auth-display-request-id` : Afficher l'ID de requête dans les pages d'erreur (utile pour le support).
+- `spi-realm-restapi-extension-cloudfront-auth-access-roles` : Liste de noms de rôles client (séparés par des virgules). Les utilisateurs devront avoir au moins un de ces rôles pour générer les cookies signés pour le client. Si vide, tout utilisateur authentifié peut accéder.
+- `spi-realm-restapi-extension-cloudfront-auth-auth-cookies-attributes` : Attributs ajoutés aux cookies d'authentification.
 
-## Licence
 
-Voir le fichier `LICENSE` à la racine du projet.
+### Configuration Client et CloudFront
+Voir ...
 
----
 
-Si vous voulez, je peux :
-- ajouter un badge CI et créer un workflow GitHub Actions minimal;
-- générer un `realm-config.json` d'exemple ou un snippet CloudFront pour faciliter le déploiement.
+## Build & Tests
+
+Le script `run.sh` à la racine de ce dépôt permet de réaliser la plupart des actions de build et de test pour ce projet.
+Il contient plusieurs sous-commandes avec leurs propres options. Pour afficher l'aide : `./run.sh help` ou `./run.sh <subcommand> help`.
+
+- `build`: produit les artefacts JAR compatibles avec différentes versions de Keycloak, avec des options pour les tests.
+   - Options utiles:
+      - `-t`, `--test` : après un build réussi, lance les tests d'intégration (`scripts/test-integration.sh`).
+      - `--keep-containers=POLICY` : transmis au runner de tests si `-t` est utilisé. `POLICY` vaut `never` (défaut), `on-failure` ou `always`.
+      - `-r`, `--run` : après un build réussi, lance automatiquement la stack Docker `dev-tests` avec l'extension Keycloak construite.
+        Si aucune version n'est fournie, la version plus récente sera utilisée. Cette option est incompatible avec `-t/--test`.
+   - Usage courant :
+      - `./run.sh build` # Build toutes les les versions supportées
+      - `./run.sh build 26.0` # Build pour Keycloak 26.0
+      - `./run.sh build 26.0 -r` # Build pour Keycloak 26.0, puis lance un container dev-tests avec ce build
+      - `./run.sh build -t --keep-containers=on-failure 26.0` # Build avec tests d'intégration, conserve les conteneurs en cas d'échec
+
+- `docker-build`: pour construire les images Docker du projet.
+   - `./run.sh docker-build cf-auth-sim [<tags>...]` : construit l'image du simulateur CloudFront Auth.
+   - `./run.sh docker-build dev-tests [<tags>...]` : construit l'image de test avec Keycloak + provider monté.
+
+- `docker-run`: lance des stacks Docker prédéfinies via `docker compose`.
+   - Stacks disponibles : `demo` (fichier `docker/demo/compose.yml`) et `dev-tests` (fichier `docker/dev-tests/compose.yml`).
+   - Options et comportement :
+      - Sans option `-d` (par défaut) : le wrapper exécute `docker compose up` au premier plan et affiche la sortie en direct — aucun redémarrage automatisé n'est effectué.
+      - Avec `-d` ou `--detach` : le wrapper lance `docker compose up -d` (mode détaché). Dans ce cas, si `docker compose up` n'a effectué aucun changement
+        (les containers existaient déjà avec la même configuration et étaient démarrés), le script lancera un `docker compose restart` pour redémarrer
+        proprement les containers existants. Cette logique évite la recréation non désirée tout en assurant un redémarrage quand nécessaire.
+   - Exemples :
+      - `./run.sh docker-run demo` (foreground, sortie en direct)
+      - `./run.sh docker-run dev-tests -d` (detached, avec logique de redémarrage si compose n'a rien modifié)
+

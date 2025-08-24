@@ -17,7 +17,7 @@ public class CloudFrontAuthProviderConfig {
     private static final String CONF_REDIRECT_DELAY_NAME = "redirectDelay";
     private static final int CONF_REDIRECT_DELAY_DEFAULT = 0;
     
-    // spi-realm-restapi-extension-cloudfront-auth-redirect-failback-delay
+    // spi-realm-restapi-extension-cloudfront-auth-redirect-fallback-delay
     private static final String CONF_REDIRECT_FALLBACK_DELAY_NAME = "redirectFallbackDelay";
     private static final int CONF_REDIRECT_FALLBACK_DELAY_DEFAULT = 2;
     

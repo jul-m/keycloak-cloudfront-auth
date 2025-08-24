@@ -30,10 +30,13 @@ print_build_help() {
 Usage: $0 build [OPTIONS] [KEYCLOAK_VERSION] [BUILD_SUFFIX]
 
 This runs scripts/build.sh with the same arguments. Additional options handled by this wrapper:
-  -t, --test                    Run integration tests (scripts/test-integration.sh) if the build succeeds.
-  --keep-containers=POLICY      Forwarded to tests when --test is used. POLICY is one of:
-                                 never (default), on-failure, always
-    -h, --help, help              Show this help
+    -t, --test                  Run integration tests (scripts/test-integration.sh) if the build succeeds.
+    --keep-containers=POLICY    Forwarded to tests when --test is used.
+                                POLICY is one of: never (default), on-failure, always
+    -r, --run                   After a successful build, run the `dev-tests` docker stack
+                                for the built Keycloak version (uses scripts/docker-run.sh).
+                                Incompatible with -t/--test.
+    -h, --help, help            Show this help
 
 Behavior on failure when using on-failure / always:
     If you pass --keep-containers=on-failure or --keep-containers=always
@@ -48,7 +51,8 @@ Examples:
   $0 build                     # Run build for default (all)
   $0 build 26.0                # Build Keycloak 26.0
   $0 build 26.0 SNAPSHOT       # Build Keycloak 26.0 with SNAPSHOT suffix
-  $0 build -t --keep-containers=always 26.0
+    $0 build -t --keep-containers=always 26.0
+    $0 build -r 26.3        # build and run the dev-tests stack for the built version
 EOF
 }
 
@@ -68,9 +72,11 @@ case "$COMMAND" in
         print_help
         exit 0
         ;;
+
     build)
-        # Parse wrapper options for build
-        TEST=false
+    # Parse wrapper options for build
+    TEST=false
+    RUN=false
         KEEP_CONTAINERS=""
         BUILD_ARGS=()
 
@@ -78,6 +84,10 @@ case "$COMMAND" in
             case "$1" in
                 -t|--test)
                     TEST=true
+                    shift
+                    ;;
+                -r|--run)
+                    RUN=true
                     shift
                     ;;
                 --keep-containers=*)
@@ -128,6 +138,12 @@ case "$COMMAND" in
             exit $build_rc
         fi
 
+        # Disallow running tests and auto-run simultaneously
+        if [ "$RUN" = true ] && [ "$TEST" = true ]; then
+            echo "[ERROR] -r/--run is incompatible with -t/--test" >&2
+            exit 1
+        fi
+
         # If requested, run integration tests
         if [ "$TEST" = true ]; then
             echo "Build succeeded. Running integration tests..."
@@ -162,88 +178,84 @@ case "$COMMAND" in
             fi
         fi
 
+        # If requested, run docker dev-tests for the newly built version(s)
+        if [ "$RUN" = true ]; then
+            # First prefer the version specified on the build command line (BUILD_ARGS)
+            kc_version=""
+            for a in ${BUILD_ARGS[@]:-}; do
+                if [[ "$a" =~ ^([0-9]+)(\.[0-9]+)?$ ]] && [ -z "$kc_version" ]; then
+                    kc_version="$a"
+                fi
+            done
+
+            echo "--------------------------------------------------"
+            echo "# -r / --run option provided"
+            echo "# Run './scripts/docker-run.sh dev-tests -d'"
+            echo "--------------------------------------------------"
+
+            if [ -n "$kc_version" ]; then
+                echo "Using Keycloak version from build args: $kc_version"
+                PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" dev-tests -d "$kc_version"
+                rc=$?
+                if [ $rc -ne 0 ]; then
+                    echo "[ERROR] docker-run failed (exit code $rc)."
+                    exit $rc
+                fi
+            else
+                # Fall back to detecting the latest JAR in dist/
+                if [ -d "$REPO_ROOT/dist" ]; then
+                    latest_jar=$(ls -t "$REPO_ROOT/dist"/keycloak-cloudfront-auth-*-KC*.jar 2>/dev/null | head -1 || true)
+                    if [ -n "$latest_jar" ]; then
+                        # Use POSIX-compatible sed to extract version like 26.3
+                        kc_version=$(basename "$latest_jar" | sed -n 's/.*-KC\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
+                        if [ -n "$kc_version" ]; then
+                            echo "Use latest Keycloak version: $kc_version"
+                            PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" dev-tests -d "$kc_version"
+                            rc=$?
+                            if [ $rc -ne 0 ]; then
+                                echo "[ERROR] docker-run failed (exit code $rc)."
+                                exit $rc
+                            fi
+                        else
+                            echo "[ERROR] Could not determine built Keycloak version from: $latest_jar" >&2
+                            exit 1
+                        fi
+                    else
+                        echo "[ERROR] No built JARs found in dist/ to determine KC version." >&2
+                        exit 1
+                    fi
+                else
+                    echo "[ERROR] dist/ directory not found; cannot auto-run dev-tests." >&2
+                    exit 1
+                fi
+            fi
+        fi
+
         echo "Build (and optional tests) completed successfully."
         ;;
     
     docker-build)
-        # Forward all arguments to scripts/docker-build.sh
-        print_build_docker_usage() {
-            # Delegate help to the script but export PARENT_CMD so the script
-            # prints a usage line that references the wrapper invocation.
-            PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" --help
-        }
-
+        # Delegate to scripts/docker-build.sh
         if [ "$#" -eq 0 ]; then
-            # When the user calls the wrapper with no args, show the wrapper's
-            # short usage and don't attempt to show the target script's help.
-            print_build_docker_usage
-            exit 2
+            PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" help
         fi
 
-        # Treat explicit help like no-args: show the wrapper's short usage only.
-        case "$1" in
-            -h|--help|help)
-                print_build_docker_usage
-                exit 2
-                ;;
-        esac
-
-    echo "Running docker-build: $SCRIPTS_DIR/docker-build.sh $*"
-    set +e
-    # Export PARENT_CMD so the delegated script can display usage that
-    # references the wrapper invocation when printing help.
-    PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" "$@"
+        PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" "$@"
         rc=$?
-        set -e
         if [ $rc -ne 0 ]; then
             echo "[ERROR] docker-build failed (exit code $rc)."
             exit $rc
         fi
         ;;
+
     docker-run)
-        # Run predefined docker compose stacks: demo or dev-tests
-        print_docker_run_usage() {
-            cat <<EOF
-Usage: $0 docker-run <stack> [args]
-
-Stacks:
-  demo       Run the demo stack (docker/demo/compose.yml)
-  dev-tests  Run the dev-tests stack (docker/dev-tests/compose.yml)
-
-Any additional arguments are forwarded to 'docker compose'.
-EOF
-        }
-
-        if [ "$#" -lt 1 ]; then
-            print_docker_run_usage
-            exit 2
+        # Delegate to scripts/docker-run.sh
+        if [ "$#" -eq 0 ]; then
+            PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" help
         fi
 
-        case "$1" in
-            -h|--help|help)
-                print_docker_run_usage
-                exit 0
-                ;;
-            demo)
-                shift
-                CMD=(docker compose -f "$REPO_ROOT/docker/demo/compose.yml" up "$@")
-                ;;
-            dev-tests)
-                shift
-                CMD=(docker compose -f "$REPO_ROOT/docker/dev-tests/compose.yml" up "$@")
-                ;;
-            *)
-                echo "[ERROR] Unknown docker-run stack: $1"
-                print_docker_run_usage
-                exit 1
-                ;;
-        esac
-
-        echo "Running: ${CMD[*]}"
-        set +e
-        "${CMD[@]}"
+        PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" "$@"
         rc=$?
-        set -e
         if [ $rc -ne 0 ]; then
             echo "[ERROR] docker-run failed (exit code $rc)."
             exit $rc

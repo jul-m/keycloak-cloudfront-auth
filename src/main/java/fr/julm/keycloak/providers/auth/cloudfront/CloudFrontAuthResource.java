@@ -206,6 +206,7 @@ public class CloudFrontAuthResource {
                     session, Messages.ACCESS_DENIED, Response.Status.UNAUTHORIZED, requestId, event, errorMessage);
             }
 
+            // TODO: if no accessRoles in provider config, no filtering
             if (Collections.disjoint(
                     CloudFrontAuthProviderConfig.getAccessRoles(),
                     resourceAccess.get(clientId).getRoles()
