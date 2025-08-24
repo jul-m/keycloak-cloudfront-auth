@@ -94,6 +94,14 @@ jobs:
           echo "versions=${unique_versions[*]}" >> "$GITHUB_OUTPUT"
           echo "jars=${jars[*]}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: ${{ inputs.build_demo_image }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        if: ${{ inputs.build_demo_image }}
+
       - name: Build demo images per Keycloak version
         id: build_images
         if: ${{ inputs.build_demo_image }}
