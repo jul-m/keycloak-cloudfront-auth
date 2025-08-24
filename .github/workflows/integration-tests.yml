@@ -34,11 +34,17 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # - name: Setup Docker Buildx
+      #   uses: docker/setup-buildx-action@v3
 
       - name: Start Docker services
         run: docker info
+
+      - name: Build Docker images
+        run: |
+          # Build Docker images
+          echo "Build cf-auth-sim image"
+          ./run.sh docker-build cf-auth-sim
 
       - name: Build and run integration tests for Keycloak ${{ env.KEYCLOAK_VERSIONS }}
         run: ./run.sh build -t --keep-containers=never ${KEYCLOAK_VERSIONS}
