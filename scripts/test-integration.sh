@@ -10,6 +10,13 @@ docker_up_stack() {
     fi
 }
 
+# Configure mvn options: add --no-transfer-progress when running inside GitHub Actions
+if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+    mvn_opts="--no-transfer-progress"
+else
+    mvn_opts=""
+fi
+
 docker_down_stack() {
     # $1 = stack name
     ./scripts/docker-run.sh "$1" down ${@:2}
@@ -322,7 +329,7 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
     BUILD_NAME=$(echo "$jar_basename" | sed -E 's/^keycloak-cloudfront-auth-(.*)\.jar$/\1/')
 
     # Run the tests and pass keycloak-version.major-minor to Maven so POM resolves correctly
-    mvn failsafe:integration-test failsafe:verify -Dmaven.test.skip=false -DskipUTs=true \
+    mvn $mvn_opts failsafe:integration-test failsafe:verify -Dmaven.test.skip=false -DskipUTs=true \
         -Dkeycloak-version.major-minor="$kc_version" -Dbuild-name="$BUILD_NAME"
 
     test_result=$?
