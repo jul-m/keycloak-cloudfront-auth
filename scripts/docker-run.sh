@@ -10,6 +10,14 @@ elif [ "$REPO_ROOT" = "$(pwd)" ]; then
   DISPLAY_NAME="./scripts/$(basename "$0")"
 fi
 
+# If running in GitHub Actions, force non-interactive/plain build progress so
+# logs are readable (disable interactive progress bars).
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  export COMPOSE_DOCKER_CLI_BUILD=1
+  export DOCKER_BUILDKIT=1
+  export BUILDKIT_PROGRESS=plain
+fi
+
 usage() {
   cat <<EOF
 Usage: $DISPLAY_NAME <stack> [sub-command] [options] [KEYCLOAK_VERSION] [-- extra docker-compose args]
@@ -26,6 +34,9 @@ Options (for 'up'):
   -d, --detach    Pass -d to 'docker compose up' (detached). The script will
                   restart containers if compose didn't change anything but
                   containers were already running.
+  --vars VAR=val  Pass one or more environment variable assignments to export
+                  for the compose run. Example:
+                  --vars KCA_PROVIDER_JAR_NAME=build.jar KCA_KC_ADMIN_USER=admin
   -h, --help      Show this help
 
 Examples:
@@ -69,11 +80,26 @@ fi
 DETACH=false
 KCA_KC_VERSION=""
 COMPOSE_ARGS=()
+# Store explicit variable assignments provided via --vars
+EXTRA_VARS=()
 while [ $# -gt 0 ]; do
   arg="$1"; shift
   case "$arg" in
     -d|--detach)
       DETACH=true
+      ;;
+    --vars)
+      # Collect following tokens that look like NAME=VALUE
+      while [ $# -gt 0 ]; do
+        next="$1"
+        # valid var assignment: contains '=' and starts with a letter or underscore
+        if [[ "$next" == *=* && "$next" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+          EXTRA_VARS+=("$next")
+          shift
+        else
+          break
+        fi
+      done
       ;;
     -h|--help|help)
       usage
@@ -97,7 +123,13 @@ done
 
 # If mode is down, run docker compose down now
 if [ "$MODE" = "down" ]; then
-  echo "Tearing down stack using: docker compose -f $TARGET_COMPOSE_FILE down -v --remove-orphans ${COMPOSE_ARGS[*]}"
+  # Print the compose down command we are about to run. Avoid expanding
+  # COMPOSE_ARGS when it's empty to remain safe under 'set -u'.
+  if [ ${#COMPOSE_ARGS[@]} -gt 0 ]; then
+    echo "Tearing down stack using: docker compose -f $TARGET_COMPOSE_FILE down -v --remove-orphans ${COMPOSE_ARGS[*]}"
+  else
+    echo "Tearing down stack using: docker compose -f $TARGET_COMPOSE_FILE down -v --remove-orphans"
+  fi
   set +e
   docker compose -f "$TARGET_COMPOSE_FILE" down -v --remove-orphans ${COMPOSE_ARGS[@]:-}
   rc=$?
@@ -116,6 +148,17 @@ if [ "$DETACH" = true ]; then
 fi
 if [ ${#COMPOSE_ARGS[@]} -gt 0 ]; then
   CMD+=("${COMPOSE_ARGS[@]}")
+fi
+
+# Export any extra VAR=VALUE provided via --vars
+if [ ${#EXTRA_VARS[@]} -gt 0 ]; then
+  echo "Exporting variables from --vars: ${EXTRA_VARS[*]}"
+  for pair in "${EXTRA_VARS[@]}"; do
+    # split NAME=VALUE
+    name="${pair%%=*}"
+    value="${pair#*=}"
+    export "$name=$value"
+  done
 fi
 
 # Export KCA_KC_VERSION to environment for the compose process if provided

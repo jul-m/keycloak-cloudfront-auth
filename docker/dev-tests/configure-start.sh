@@ -2,28 +2,63 @@
 
 set -e
 
-echo "=== ENV VAR VALUES ==="
-echo "KEYCLOAK_VERSION=$KCA_KC_VERSION"
-echo "KCA_IMPORT_JSON_NAME=$KCA_IMPORT_JSON_NAME"
-echo "======================="
+echo "=================================================="
+echo "Starting configure-start.sh script..."
+
+# Determine KC_VERSION (format MAJOR.MINOR) from /opt/keycloak/version.txt when not provided.
+# Example file content: "Keycloak - Version 26.3.3" -> KC_VERSION=26.3
+if [ -z "${KC_VERSION:-}" ]; then
+  if [ -r "/opt/keycloak/version.txt" ]; then
+    # extract first occurrence of N.N (major.minor)
+    kc_ver=$(grep -Eo '[0-9]+\.[0-9]+' /opt/keycloak/version.txt | head -n1 || true)
+    if [ -n "$kc_ver" ]; then
+      KC_VERSION="$kc_ver"
+    else
+      echo "Could not parse Keycloak version from /opt/keycloak/version.txt" >&2
+    fi
+  else
+    echo "/opt/keycloak/version.txt not readable; KC_VERSION not set from file" >&2
+  fi
+fi
 
 DIST_DIR="/mnt/dist"
+# If a specific provider JAR name is provided via env and not 'auto', prefer it.
+if [ -n "${KCA_PROVIDER_JAR_NAME:-}" ] && [ "${KCA_PROVIDER_JAR_NAME:-}" != "auto" ]; then
+  PROVIDER_JAR_PATH="${DIST_DIR}/${KCA_PROVIDER_JAR_NAME}"
+  if [ ! -f "$PROVIDER_JAR_PATH" ]; then
+    echo "KCA_PROVIDER_JAR_NAME is set to '$KCA_PROVIDER_JAR_NAME' but file does not exist in $DIST_DIR" >&2
+    echo "Files in $DIST_DIR:" >&2
+    ls -1 "$DIST_DIR" || true
+    exit 1
+  fi
+  echo "Using provider JAR from KCA_PROVIDER_JAR_NAME: $PROVIDER_JAR_PATH"
+else
+  if [ "${KCA_PROVIDER_JAR_NAME:-}" = "auto" ]; then
+    echo "KCA_PROVIDER_JAR_NAME=auto: performing automatic JAR detection in $DIST_DIR"
+  fi
+  matches=( "$DIST_DIR"/keycloak-cloudfront-auth-*-KC${KC_VERSION}*.jar )
 
-matches=( "$DIST_DIR"/keycloak-cloudfront-auth-*-KC${KCA_KC_VERSION}*.jar )
+  if [ "${#matches[@]}" -eq 0 ]; then
+    echo "No provider JAR found in $DIST_DIR matching Keycloak $KC_VERSION" >&2
+    echo "Searched pattern: keycloak-cloudfront-auth-*-KC${KC_VERSION}*.jar" >&2
+    echo "Files in $DIST_DIR:" >&2
+    ls -1 "$DIST_DIR" || true
+    exit 1
+  fi
+  if [ "${#matches[@]}" -gt 1 ]; then
+    echo "Multiple matching JARs found in $DIST_DIR; using the first one:" >&2
+    for f in "${matches[@]}"; do printf '  %s\n' "$f"; done
+  fi
 
-if [ "${#matches[@]}" -eq 0 ]; then
-  echo "No provider JAR found in $DIST_DIR matching Keycloak $KCA_KC_VERSION" >&2
-  echo "Searched pattern: keycloak-cloudfront-auth-*-KC${KCA_KC_VERSION}*.jar" >&2
-  echo "Files in $DIST_DIR:" >&2
-  ls -1 "$DIST_DIR" || true
-  exit 1
+  PROVIDER_JAR_PATH="${matches[0]}"
 fi
-if [ "${#matches[@]}" -gt 1 ]; then
-  echo "Multiple matching JARs found in $DIST_DIR; using the first one:" >&2
-  for f in "${matches[@]}"; do printf '  %s\n' "$f"; done
-fi
 
-PROVIDER_JAR_PATH="${matches[0]}"
+echo "=== VAR VALUES ==="
+echo "KEYCLOAK_VERSION=$KC_VERSION"
+echo "KCA_PROVIDER_JAR_NAME=$KCA_PROVIDER_JAR_NAME"
+echo "KCA_PROVIDER_JAR_PATH=$PROVIDER_JAR_PATH"
+echo "KCA_IMPORT_JSON_NAME=$KCA_IMPORT_JSON_NAME"
+echo "=================================================="
 
 echo "Copying provider JAR $PROVIDER_JAR_PATH to /opt/keycloak/providers/..."
 cp "$PROVIDER_JAR_PATH" "/opt/keycloak/providers/"
@@ -43,7 +78,7 @@ echo "Starting Keycloak in development mode..."
 		then break; fi; \
         sleep 2; \
     done && \
-    java -jar "/mnt/keycloak-config-cli/keycloak-config-cli.jar" \
+    java -jar "/mnt/lib/keycloak-config-cli/keycloak-config-cli-KC$KC_VERSION.jar" \
         --keycloak.url=http://127.0.0.1:80 \
         --keycloak.ssl-verify=false \
         --keycloak.user=${KEYCLOAK_ADMIN} \

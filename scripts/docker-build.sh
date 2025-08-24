@@ -13,6 +13,16 @@ elif [ "$REPO_ROOT" = "$(pwd)" ]; then
   DISPLAY_NAME="./scripts/$(basename "$0")"
 fi
 
+# If running under GitHub Actions, prefer plain progress output to avoid
+# interactive progress bars which don't render well in Actions logs.
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  export DOCKER_BUILDKIT=1
+  export BUILDKIT_PROGRESS=plain
+  PROGRESS_ARG=(--progress=plain)
+else
+  PROGRESS_ARG=()
+fi
+
 usage() {
   cat <<EOF
 Keycloak CloudFront Auth - Build Tools Docker Images
@@ -65,7 +75,7 @@ case "$1" in
       build_tag_args+=( -t "keycloak-cloudfront-auth-simulator:${t}" )
     done
 
-    docker build "${build_tag_args[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
+  docker build "${build_tag_args[@]}" "${PROGRESS_ARG[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
     ;;
   
   kc-demo)
@@ -140,7 +150,7 @@ case "$1" in
       build_tag_args+=( -t "keycloak-cloudfront-auth-demo:${t}" )
     done
 
-    docker build "${build_tag_args[@]}" -f docker/demo/Dockerfile \
+    docker build "${build_tag_args[@]}" "${PROGRESS_ARG[@]}" -f docker/demo/Dockerfile \
       --build-arg KC_VERSION="$KC_VERSION" \
       --build-arg PROVIDER_JAR_NAME="$PROVIDER_JAR_NAME" \
       .

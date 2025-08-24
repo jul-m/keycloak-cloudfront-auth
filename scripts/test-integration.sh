@@ -1,15 +1,5 @@
 #!/bin/bash
 
-# Helper functions to start/stop stacks using the central script
-docker_up_stack() {
-    # $1 = stack name (eg. dev-tests), $2 = keycloak version (optional), additional args forwarded
-    if [ -n "${2-}" ]; then
-        ./scripts/docker-run.sh "$1" up -d "$2" ${@:3}
-    else
-        ./scripts/docker-run.sh "$1" up -d ${@:2}
-    fi
-}
-
 # Configure mvn options: add --no-transfer-progress when running inside GitHub Actions
 if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
     mvn_opts="--no-transfer-progress"
@@ -237,7 +227,7 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
 
     # Step 3: Launch via centralized script and pass Keycloak version to docker-run
     echo "Starting Keycloak with Docker (via ./scripts/docker-run.sh)..."
-    docker_up_stack dev-tests "$kc_version"
+    ./scripts/docker-run.sh dev-tests up "$kc_version" -d --vars KCA_PROVIDER_JAR_NAME="$(basename $JAR_FILE)"
 
     if [ $? -ne 0 ]; then
         echo "[ERROR] Failed to start Docker via docker-run.sh"
