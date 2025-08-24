@@ -96,7 +96,7 @@ jobs:
 
       - name: Build demo images per Keycloak version
         id: build_images
-        if: ${{ inputs.build_demo_image == 'true' }}
+        if: ${{ inputs.build_demo_image }}
         run: |
           set -euo pipefail
           OWNER="${{ github.repository_owner }}"
@@ -138,7 +138,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Tag and push per-version images to GHCR
-        if: ${{ inputs.build_demo_image == 'true' }}
+        if: ${{ inputs.build_demo_image }}
         run: |
           set -euo pipefail
           OWNER="${{ github.repository_owner }}"
