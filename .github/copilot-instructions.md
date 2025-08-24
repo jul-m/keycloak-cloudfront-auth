@@ -2,41 +2,51 @@
 
 Écrire en français, code en anglais. Ce fichier résume l'essentiel pour être productif sur ce dépôt.
 
-1) Big picture (flow)
-- CloudFront redirige les 403 vers /.cdn-auth/_cf_redirect_403.
-- `CloudFrontAuthResource` (JAX-RS) rend une page FreeMarker qui redirige vers Keycloak.
-- Après login Keycloak, `/.cdn-auth/callback` valide le code, crée un AccessToken et appelle `CloudFrontCookieSigner.generateSignedCookies` pour émettre les cookies CloudFront signés.
+1) Big picture (architecture & flow)
+- Extension Keycloak SPI qui génère des cookies CloudFront signés pour protéger distributions AWS.
+- CloudFront redirige les 403 vers `/.cdn-auth/_cf_redirect_403` (Custom Error Response).
+- `CloudFrontAuthResource` (JAX-RS) expose `/cloudfront-auth/.cdn-auth/*` et rend pages FreeMarker.
+- Flux OAuth2 : redirect → auth Keycloak → callback → génération cookies signés → accès autorisé.
+- Headers requis de CloudFront: `kc-realm-name`, `kc-client-id`, `kc-client-secret`, `kc-cf-sign-key-id`.
 
-2) Fichiers clés à lire (rapide)
-- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/CloudFrontAuthResource.java` — endpoints, gestion du flux OAuth2, détection de boucle (cookie `cloudfront_auth_loop`).
-- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/CloudFrontCookieSigner.java` — génération des cookies signés, cache des clés via ConcurrentHashMap, utilise `session.keys()` pour récupérer la clé active RS256.
-- `src/main/java/fr/julm/keycloak/providers/auth/cloudfront/*ProviderFactory.java` — enregistrement SPI.
-- `src/main/resources/html/*.ftl` — templates utilisateur (redirect.ftl, error.ftl).
-- `src/main/resources/META-INF/services/*` et `target/classes/META-INF/services/*` — enregistrement des services SPI.
+2) Structure du projet & fichiers critiques
+- **Code principal**: `src/main/java/.../cloudfront/` — 9 classes Java (Resource, Signer, Config, Factories)
+- **SPI registration**: `src/main/resources/META-INF/services/` — OBLIGATOIRE pour chargement Keycloak
+- **Templates UI**: `src/main/resources/html/*.ftl` — redirect.ftl (avec JS), error.ftl
+- **Tests intégration**: `src/it/java/.../it/` — tests avec containers Docker complets
+- **Environnements Docker**: `docker/{demo,dev-tests,cf-auth-sim}/` — stacks prêtes à l'emploi
+- **Scripts automation**: `scripts/{build,test-integration,docker-*}.sh` — outils de build multi-versions
 
-3) Commandes de build & dev utiles
-- Compiler jar: `mvn clean package` (ou `./build.sh` qui gère versions Keycloak et suffixes).
-- Artefact: `target/keycloak-cloudfront-auth-*KC<version>*.jar` (le script `build.sh` recherche ce motif).
-- Intégration rapide: `cd docker/dev-tests && docker-compose up` (installe automatiquement le provider depuis mounts/configurator/providers).
-- Tests d'intégration: `./test-integration.sh` (présent dans la racine / scripts selon usage).
+3) Workflows de développement essentiels
+- **Setup rapide**: `./run.sh docker-run dev-tests` — lance stack complète depuis `docker/dev-tests/compose.yml`
+- **Build multi-versions**: `./run.sh build [25.0|26.0|26.1|26.2|26.3]` — compile JAR spécifique à version KC
+- **Build + test**: `./run.sh build 26.3 -t --keep-containers=on-failure` — avec tests d'intégration complets
+- **Build + run**: `./run.sh build 26.3 -r` — compile puis lance automatiquement environnement dev
+- **Démo publique**: `./run.sh docker-run demo` — environnement démonstration avec simulateur CloudFront
+- **Artefacts**: `dist/keycloak-cloudfront-auth-*KC<version>*.jar` après build réussi
 
-4) Conventions runtime & sécurité
-- La clé privée CloudFront doit rester hors logs: variable d'environnement `CLOUDFRONT_PRIVATE_KEY` (PEM).
-- SPI options: `spi-realm-restapi-extension-cloudfront-auth-*` ou variables `KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_*`.
-- En-têtes obligatoires envoyés par CloudFront vers Keycloak: `kc-realm-name`, `kc-client-id`, `kc-client-secret`, `kc-cf-sign-key-id` (nom observé dans le code).
+4) Configuration & intégration Keycloak
+- **SPI Provider ID**: "cloudfront-auth" (dans CloudFrontAuthResourceProviderFactory)
+- **Path exposé**: `/cloudfront-auth/.cdn-auth/*` (configuré dans @Path de CloudFrontAuthResource)
+- **Config globale**: variables `KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_*`
+- **Paramètres SPI**: `redirect-delay`, `redirect-fallback-delay`, `display-request-id`, `access-roles`, `auth-cookies-attributes`
+- **Cache clés RSA**: par RealmModel dans `CloudFrontCookieSigner.signingKeysCache` (session.keys() → Algorithm.RS256)
 
-5) Patterns et pièges spécifiques
-- Les factories SPI sont détectées via `META-INF/services` — modifier/ajouter les fichiers correspondants pour que Keycloak charge la SPI.
-- Les FreeMarker `.ftl` sont la surface UI; évitez de modifier la logique d'URL dans `CloudFrontAuthResource` sans mettre à jour les templates.
-- `CloudFrontCookieSigner` met les clés de signature en cache par `RealmModel` — si vous changez la façon dont les clés sont gérées, ajoutez invalidation/rotation.
-- Le script `scripts/build.sh` supporte des builds multi-versions Keycloak (voir liste KEYCLOAK_VERSIONS dans le script).
+5) Environnements Docker & tests
+- **`docker/dev-tests/`**: stack développement avec auto-configuration (configure-start.sh + keycloak-config-cli)
+- **`docker/demo/`**: environnement démonstration public, realm pré-configuré (demo-realm-config.json)
+- **`docker/cf-auth-sim/`**: simulateur CloudFront (OpenResty/Nginx + scripts Lua) pour tests sans AWS
+- **Tests d'intégration**: `src/it/` — CloudFrontAuthExtensionIT, KeycloakInstanceIT, outils simulation CF
+- **CI/CD**: `.github/workflows/integration-tests.yml` — pipeline automatisé multi-versions
 
-6) Intégration CloudFront (rappels concrets)
-- Créer un behavior pour `/.cdn-auth/*` (no-cache) et un Custom Error Response 403 -> `/.cdn-auth/_cf_redirect_403` (HTTP 200 rendu).
-- CloudFront public key RS256 doit correspondre à la clé publique du Realm Keycloak; l'ID de clé publique est fourni via `kc-cf-sign-key-id`.
+6) Templates & patterns UI
+- **FreeMarker**: `src/main/resources/html/{redirect,error}.ftl` avec variables `${authUrl}`, `${redirectUriPath}`, `${redirectFallbackDelay}`
+- **JavaScript dynamique**: redirect.ftl construit `redirect_uri` avec `original_uri` parameter automatiquement
+- **Messages i18n**: `src/main/resources/messages/messages_en.properties` pour labels interface
+- **Loop detection**: cookie `cloudfront_auth_loop`, seuil 10 tentatives/60sec, gestion dans CloudFrontAuthResource
 
-7) Debug rapide
-- Activer logs pour `fr.julm.keycloak.providers.auth.cloudfront` (voir `src/main/resources/logging.properties`).
-- Option SPI `display-request-id` active l'affichage de l'ID de requête dans la page d'erreur (utile pour corréler les logs).
-
-Si un point manque (par ex. format exact d'une variable d'environnement non trouvée dans le repo), indiquez-le et j'itérerai la fiche.
+7) Debug & troubleshooting
+- **Logs**: activer `fr.julm.keycloak.providers.auth.cloudfront` level DEBUG
+- **Request tracing**: `display-request-id=true` → affiche X-Amz-Cf-Id dans pages erreur
+- **Environnement local**: `docker/dev-tests` ou `docker/demo` pour tests complets sans dépendance AWS
+- **Configuration**: vérifier `src/it/resources/logging.properties` pour config logs des tests

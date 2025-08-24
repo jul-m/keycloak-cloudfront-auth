@@ -9,13 +9,16 @@
 - [x] Gestion du flux d'authentification entre Keycloak et CloudFront (login, callback, erreurs).
 - [x] Ajout optionnel d'un cookie contenant l'access-token JWT de l'utilisateur et client OpenID à destination de l'application.
 
+Le fonctionnement de l'extension est détaillé dans la section [Fonctionnement](#fonctionnement).
+
 ### Avantages
 - Intégration transparente et rapide avec Keycloak via un client OpenID classique.
 - Pas de fonctions CloudFront ou Lambda@Edge nécessaires (protection native via cookies signés).
 - Possibilité de protéger la distribution complète (assets, API...) en déportant la gestion de l'authentification vers Keycloak.
 - Intégration de l'authentification OpenID simplifiée au sein de l'application (flux d'authentification déjà géré avec mise à disposition d'un access-token JWT via un cookie configurable).
 
-Le fonctionnement de l'extension est détaillé dans la section [Fonctionnement](#fonctionnement).
+### Versions de Keycloak supportées
+Actuellement, l'extension supporte les versions: `25.0`, `26.0`, `26.1`, `26.2` et `26.3`.
 
 
 ## Démarrage rapide
