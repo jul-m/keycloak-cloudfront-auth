@@ -12,22 +12,27 @@ fi
 
 usage() {
   cat <<EOF
-Usage: $DISPLAY_NAME <stack> [options] [KEYCLOAK_VERSION] [-- extra docker-compose args]
+Usage: $DISPLAY_NAME <stack> [sub-command] [options] [KEYCLOAK_VERSION] [-- extra docker-compose args]
 
 Stacks:
   demo       Run the demo stack (docker/demo/compose.yml)
   dev-tests  Run the dev-tests stack (docker/dev-tests/compose.yml)
 
-Options:
-  -d, --detach    Pass -d to 'docker compose up' (detached). The script always
-                  runs 'docker compose up' and will restart containers if compose
-                  didn't change anything but containers were already running.
+Sub-commands:
+  up         Start the stack (default)
+  down       Tear down the stack (runs 'docker compose down -v --remove-orphans')
+
+Options (for 'up'):
+  -d, --detach    Pass -d to 'docker compose up' (detached). The script will
+                  restart containers if compose didn't change anything but
+                  containers were already running.
   -h, --help      Show this help
 
 Examples:
-  $DISPLAY_NAME dev-tests 26.3
-  $DISPLAY_NAME dev-tests -d 26.3
-  $DISPLAY_NAME demo --build
+  $DISPLAY_NAME dev-tests up 26.3
+  $DISPLAY_NAME dev-tests up -d 26.3
+  $DISPLAY_NAME dev-tests down
+  $DISPLAY_NAME demo up --build
 EOF
   exit 2
 }
@@ -53,6 +58,12 @@ case "$1" in
     usage
     ;;
 esac
+# Accept optional sub-command (up/down). Default to up.
+MODE="up"
+if [ "$#" -gt 0 ] && ( [ "$1" = "up" ] || [ "$1" = "down" ] ); then
+  MODE="$1"
+  shift
+fi
 
 # Parse remaining args: accept optional -d/--detach and an optional KEYCLOAK_VERSION
 DETACH=false
@@ -84,6 +95,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# If mode is down, run docker compose down now
+if [ "$MODE" = "down" ]; then
+  echo "Tearing down stack using: docker compose -f $TARGET_COMPOSE_FILE down -v --remove-orphans ${COMPOSE_ARGS[*]}"
+  set +e
+  docker compose -f "$TARGET_COMPOSE_FILE" down -v --remove-orphans ${COMPOSE_ARGS[@]:-}
+  rc=$?
+  set -e
+  if [ $rc -ne 0 ]; then
+    echo "[ERROR] docker-compose down failed (exit code $rc)."
+    exit $rc
+  fi
+  exit 0
+fi
+
 # Build docker compose command
 CMD=(docker compose -f "$TARGET_COMPOSE_FILE" up)
 if [ "$DETACH" = true ]; then
@@ -97,6 +122,12 @@ fi
 if [ -n "$KCA_KC_VERSION" ]; then
   export KCA_KC_VERSION
   echo "Using KCA_KC_VERSION=$KCA_KC_VERSION"
+
+  if [ "$TARGET_COMPOSE_FILE" = "$REPO_ROOT/docker/dev-tests/compose.yml" ]; then
+    # Ensure keycloak-config-cli jar is available in lib/ (download if needed)
+    echo "Fetching keycloak-config-cli for Keycloak $KCA_KC_VERSION into lib/... if missing"
+    scripts/fetch-kc-config-cli.sh "$KCA_KC_VERSION"
+  fi
 fi
 
 if [ "$DETACH" = false ]; then

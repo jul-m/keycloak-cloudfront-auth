@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$REPO_ROOT/scripts"
 
 print_help() {
-    cat <<EOF
+    cat <<'EOF'
 Usage: $0 <command> [options] [args]
 
 Commands:
@@ -26,10 +26,12 @@ EOF
 }
 
 print_build_help() {
-    cat <<EOF
+    cat <<'EOF'
 Usage: $0 build [OPTIONS] [KEYCLOAK_VERSION] [BUILD_SUFFIX]
 
-This runs scripts/build.sh with the same arguments. Additional options handled by this wrapper:
+This runs scripts/build.sh with the same arguments. KEYCLOAK_VERSION accepts a version like
+`26` or `26.0` or the literal `all` (default) to build/test all supported versions. Additional
+options handled by this wrapper:
     -t, --test                  Run integration tests (scripts/test-integration.sh) if the build succeeds.
     --keep-containers=POLICY    Forwarded to tests when --test is used.
                                 POLICY is one of: never (default), on-failure, always

@@ -2,13 +2,14 @@ name: keycloak-cloudfront-auth
 
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:${KCA_KC_VERSION}
+    image: quay.io/keycloak/keycloak:${KCA_KC_VERSION:-26.3}
     container_name: kc-cloudfront-auth_keycloak
     environment:
       - KEYCLOAK_ADMIN=${KCA_KC_ADMIN_USER}                   # KC <= 25.0
       - KEYCLOAK_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD}      # KC <= 25.0
       - KC_BOOTSTRAP_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD}  # KC >= 26.0
       - KC_BOOTSTRAP_ADMIN_USERNAME=${KCA_KC_ADMIN_USER}      # KC >= 26.0
+      - KCA_KC_VERSION=${KCA_KC_VERSION:-26.3}
       - KC_HEALTH_ENABLED=true
       - KC_HTTP_PORT=80
       - KC_LOG_LEVEL=${KCA_KC_LOG_LEVEL}

@@ -1,9 +1,19 @@
 #!/bin/bash
 
-# Resolve repository root so script can be run from any cwd
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT" || exit 1
+# Helper functions to start/stop stacks using the central script
+docker_up_stack() {
+    # $1 = stack name (eg. dev-tests), $2 = keycloak version (optional), additional args forwarded
+    if [ -n "${2-}" ]; then
+        ./scripts/docker-run.sh "$1" up -d "$2" ${@:3}
+    else
+        ./scripts/docker-run.sh "$1" up -d ${@:2}
+    fi
+}
+
+docker_down_stack() {
+    # $1 = stack name
+    ./scripts/docker-run.sh "$1" down ${@:2}
+}
 
 # Available Keycloak versions supported by this extension
 KEYCLOAK_VERSIONS=("23.0" "24.0" "25.0" "26.0")
@@ -22,7 +32,7 @@ show_help() {
     echo "  If you pass --keep-containers=on-failure or --keep-containers=always,"
     echo "  the script will stop running further versions when a failure occurs so you can"
     echo "  inspect the running containers. Containers will NOT be removed by this script"
-    echo "  in that case; run 'cd docker/dev-tests && docker-compose down -v --remove-orphans'"
+    echo "  in that case; run './scripts/docker-run.sh down dev-tests'"
     echo "  manually when finished."
     echo "  -h, --help, help           Show this help"
     echo -e "\nExamples:"
@@ -143,6 +153,19 @@ if [ ${#VERSIONS_TO_TEST[@]} -eq 0 ]; then
     IFS=$'\n' VERSIONS_TO_TEST=($(printf "%s\n" "${VERSIONS_TO_TEST[@]}" | sort -n))
     unset IFS
 else
+    # If user explicitly passed "all", run for all discovered versions.
+    for v in "${VERSIONS_TO_TEST[@]}"; do
+        if [ "$v" = "all" ]; then
+            VERSIONS_TO_TEST=()
+            for k in "${VERSIONS_AVAILABLE[@]}"; do
+                VERSIONS_TO_TEST+=("$k")
+            done
+            IFS=$'\n' VERSIONS_TO_TEST=($(printf "%s\n" "${VERSIONS_TO_TEST[@]}" | sort -n))
+            unset IFS
+            break
+        fi
+    done
+
     # Validate specified versions exist among discovered JARs
     VALIDATED_VERSIONS=()
     for version in "${VERSIONS_TO_TEST[@]}"; do
@@ -186,14 +209,8 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
     # Split version format VV.N into major and minor (e.g., 26.3 -> major=26 minor=3)
     # Step 1: Clean up existing Docker containers
     echo "Cleaning up existing Docker containers..."
-    cd docker/dev-tests
-    docker-compose down -v --remove-orphans > /dev/null 2>&1
-    cd ../..
-    
-    # Step 2: Copy selected JAR from dist/ to providers directory
-    echo "Preparing extension JAR for Keycloak $kc_version..."
-    PROVIDERS_DIR="docker/dev-tests/mounts/kc_providers"
-    rm -rf "$PROVIDERS_DIR"/*
+    # Use centralized helper to manage docker compose projects
+    docker_down_stack dev-tests > /dev/null 2>&1 || true
 
     # find corresponding JAR from VERSIONS_AVAILABLE/JARS_AVAILABLE
     JAR_FILE=""
@@ -209,79 +226,68 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
         continue
     fi
 
-    echo "Using JAR: $JAR_FILE"
-    echo "Copying JAR: $JAR_FILE to $PROVIDERS_DIR"
-    cp "$JAR_FILE" "$PROVIDERS_DIR/"
-    
-    # Step 3: Launch Docker Compose
-    echo "Starting Keycloak with Docker Compose..."
-    cd docker/dev-tests
-    # Export version vars for Docker and tests
-    export KCA_KC_VERSION="$kc_version"
-    docker-compose up -d
-    
+    echo "Found provider JAR: $JAR_FILE"
+
+    # Step 3: Launch via centralized script and pass Keycloak version to docker-run
+    echo "Starting Keycloak with Docker (via ./scripts/docker-run.sh)..."
+    docker_up_stack dev-tests "$kc_version"
+
     if [ $? -ne 0 ]; then
-        echo "[ERROR] Failed to start Docker Compose"
-        cd ../..
+        echo "[ERROR] Failed to start Docker via docker-run.sh"
         FAILED_TESTS+=("Keycloak $kc_version - Docker startup failed")
         continue
     fi
     
-    # Step 4: Wait for configurator to finish (improved: detect failure + show logs)
-    echo "Waiting for configurator to complete..."
+    # Step 4: Wait for Keycloak configuration import to finish
+    echo "Waiting for Keycloak configuration import to complete..."
     max_wait=300  # 5 minutes max
     wait_time=0
     configurator_failed=false
     configurator_reason=""
 
+    # The ini script runs inside the keycloak container; locate that container by name
+    kc_container=""
     while [ $wait_time -lt $max_wait ]; do
-        # Get configurator container id (prefer docker-compose, fallback to docker by label)
-        container_id=$(docker-compose ps -q configurator 2>/dev/null)
-        if [ -z "$container_id" ]; then
-            # Try to find any container created by this compose for service 'configurator'
-            container_id=$(docker ps -a --filter "label=com.docker.compose.service=configurator" --format "{{.ID}}" | head -n1 2>/dev/null || true)
-        fi
+        kc_container=$(docker ps -a --filter "name=kc-cloudfront-auth_keycloak" --format "{{.ID}}" | head -n1 2>/dev/null || true)
 
-        if [ -z "$container_id" ]; then
+        if [ -z "$kc_container" ]; then
             configurator_failed=true
-            configurator_reason="configurator container not found"
-            echo "[ERROR] Configurator container not found."
+            configurator_reason="keycloak container not found"
+            echo "[ERROR] Keycloak container not found."
             break
         fi
 
-        # Check if configurator is still running
-        running=$(docker inspect --format='{{.State.Running}}' "$container_id" 2>/dev/null || echo "false")
-        if [ "$running" = "true" ]; then
-            echo "Configurator still running... (${wait_time}s elapsed)"
-            sleep 10
-            wait_time=$((wait_time + 10))
-            continue
+        # Check logs for success marker
+        if docker logs --tail 200 "$kc_container" 2>/dev/null | grep -q "Keycloak configuration imported successfully\."; then
+            echo "Keycloak configuration import finished successfully."
+            break
         fi
 
-        # Container finished — inspect exit code
-        exit_code=$(docker inspect --format='{{.State.ExitCode}}' "$container_id" 2>/dev/null || echo "1")
-        if [ "$exit_code" -ne 0 ]; then
+        # Check if keycloak container exited unexpectedly
+        running=$(docker inspect --format='{{.State.Running}}' "$kc_container" 2>/dev/null || echo "false")
+        if [ "$running" != "true" ]; then
+            exit_code=$(docker inspect --format='{{.State.ExitCode}}' "$kc_container" 2>/dev/null || echo "1")
             configurator_failed=true
-            configurator_reason="configurator exited with code $exit_code"
-            echo "[ERROR] Configurator failed with exit code $exit_code"
-            echo "---- Last configurator logs (tail 200) ----"
-            docker logs --tail 200 "$container_id" || true
+            configurator_reason="keycloak container exited with code $exit_code"
+            echo "[ERROR] Keycloak container exited with code $exit_code"
+            echo "---- Last keycloak logs (tail 200) ----"
+            docker logs --tail 200 "$kc_container" || true
             echo "-------------------------------------------"
-        else
-            echo "Configurator finished successfully."
+            break
         fi
 
-        break
+        echo "Waiting for Keycloak configuration import... (${wait_time}s elapsed)"
+        sleep 5
+        wait_time=$((wait_time + 5))
     done
 
     if [ $wait_time -ge $max_wait ]; then
         configurator_failed=true
-        configurator_reason="configurator timeout after ${max_wait}s"
-        echo "[ERROR] Configurator did not finish within timeout (${max_wait}s)"
-        container_id=$(docker-compose ps -q configurator 2>/dev/null)
-        if [ -n "$container_id" ]; then
-            echo "---- Last configurator logs (tail 200) ----"
-            docker logs --tail 200 "$container_id" || true
+        configurator_reason="configuration import timeout after ${max_wait}s"
+        echo "[ERROR] Configuration import did not finish within timeout (${max_wait}s)"
+        if [ -n "$kc_container" ]; then
+            echo "---- Last keycloak logs (tail 200) ----"
+            docker logs --tail 200 "$kc_container" || true
             echo "-------------------------------------------"
         fi
     fi
@@ -290,15 +296,13 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
             # Honor container cleanup policy: if user asked to keep containers on failure, don't remove them
             if [ "$CONTAINER_CLEANUP_POLICY" = "never" ]; then
                 echo "Cleaning up Docker containers (policy: never)..."
-                docker-compose down -v --remove-orphans > /dev/null 2>&1
-                cd ../..
+                docker_down_stack dev-tests > /dev/null 2>&1 || true
                 FAILED_TESTS+=("Keycloak $kc_version - configurator failed: $configurator_reason")
                 # continue to next version
                 continue
             else
                 echo "Keeping Docker containers for debugging (policy: $CONTAINER_CLEANUP_POLICY)"
-                echo "To manually clean up later: cd docker/dev-tests && docker-compose down -v --remove-orphans"
-                cd ../..
+                echo "To manually clean up later: ./scripts/docker-run.sh down dev-tests"
                 FAILED_TESTS+=("Keycloak $kc_version - configurator failed: $configurator_reason")
                 echo "Stopping further tests so you can inspect containers (policy: $CONTAINER_CLEANUP_POLICY)."
                 break
@@ -307,15 +311,10 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
     
     # Step 5: Wait a bit more for Keycloak to be fully ready
     echo "Waiting for Keycloak to be fully ready..."
-    sleep 10
+    sleep 5
     
     # Step 6: Run Java integration tests against the running Docker setup
-    cd ../..  # Back to project root
     echo "Running Java integration tests against Docker Keycloak..."
-    
-    # Set environment variables for the test
-    export KEYCLOAK_HOST=localhost
-    export KEYCLOAK_PORT=8080
     
     # Compute build-name from the JAR file name so tests can verify the Version operational info
     jar_basename=$(basename "$JAR_FILE")
@@ -341,19 +340,17 @@ for kc_version in "${VERSIONS_TO_TEST[@]}"; do
                 echo "Cleaning up Docker containers (policy: on-failure, tests passed)..."
             else
                 echo "Keeping Docker containers for debugging (policy: on-failure, tests failed)..."
-                echo "To manually clean up later: cd docker/dev-tests && docker-compose down -v --remove-orphans"
+                echo "To manually clean up later: ./scripts/docker-run.sh down dev-tests"
             fi
             ;;
         always)
             echo "Keeping Docker containers (policy: always)..."
-            echo "To manually clean up: cd docker/dev-tests && docker-compose down -v --remove-orphans"
+            echo "To manually clean up: ./scripts/docker-run.sh down dev-tests"
             ;;
     esac
     
     if [ "$should_cleanup" = true ]; then
-        cd docker/dev-tests
-        docker-compose down -v --remove-orphans > /dev/null 2>&1
-        cd ../..
+    docker_down_stack dev-tests > /dev/null 2>&1 || true
     fi
     
     if [ $test_result -eq 0 ]; then
