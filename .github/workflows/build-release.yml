@@ -130,7 +130,7 @@ jobs:
           echo "newest_kc_version=$NEWEST" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
-        if: ${{ inputs.build_demo_image == 'true'}}
+        if: ${{ inputs.build_demo_image }}
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
@@ -185,7 +185,7 @@ jobs:
             Keycloak versions included: ${{ steps.discover.outputs.versions }}
             Commit: ${{ github.sha }}
           draft: false
-          prerelease: ${{ inputs.latest != 'true' }}
+          prerelease: ${{ ! inputs.latest }}
 
       - name: Upload provider JARs to release
         env:
