@@ -68,7 +68,7 @@ echo "Starting Keycloak in development mode..."
     KC_PID=$! && \
     # wait for the server TCP port to be open (give up after ~30s)
     for i in $(seq 1 30); do \
-        echo "Waiting for Keycloak to start... [$i/30]." && \
+        echo "Waiting for Keycloak to start... [$i/60]." && \
     # send a minimal HTTP request on the Keycloak port and verify status 200
     if bash -c \
 			'exec 3<>/dev/tcp/127.0.0.1/9000 >/dev/null 2>&1 && \
