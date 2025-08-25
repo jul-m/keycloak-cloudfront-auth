@@ -60,7 +60,7 @@ jobs:
           KC_ARGS=$(echo "$KC_INPUT" | tr ',' ' ')
           TAG_INPUT="${{ inputs.tag }}"
           LATEST_FLAG="${{ inputs.latest }}"
-          if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+          if [ "$LATEST_FLAG" = "true" ]; then
             EXTRA_ARG="FINAL"
           else
             EXTRA_ARG="$TAG_INPUT"
@@ -171,7 +171,7 @@ jobs:
 
           # Définir tags suffixés par arch
           TAG1="KC${KC_VERSION}-${TAG_INPUT}-${PLATFORM}"
-          if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+          if [ "$LATEST_FLAG" = "true" ]; then
             TAG2="KC${KC_VERSION}-latest-${PLATFORM}"
           fi
 
@@ -261,26 +261,47 @@ jobs:
           # Parse JSON array into bash array using jq (installed in the previous step)
           readarray -t VERSIONS < <(echo "$VERSIONS_JSON" | jq -r '.[]')
 
-          # Function to delete package versions for a given tag
+          # Function to delete package versions for a given tag using gh CLI
           delete_suffix_tag() {
             local TAG_TO_DELETE="$1"
             echo "Attempting to delete package version(s) for tag: $TAG_TO_DELETE"
+            # gh must be available on runners; use it to list package versions and delete
+            if ! command -v gh >/dev/null 2>&1; then
+              echo "gh CLI not available — cannot delete package versions"
+              return 0
+            fi
+
             # Try orgs then users
             for NAMESPACE in orgs users; do
-              VERSIONS_URL="https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions"
-              resp=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$VERSIONS_URL")
+              # Use gh api to list package versions
+              if [ "$NAMESPACE" = "orgs" ]; then
+                API_PATH="/orgs/${OWNER}/packages/container/${IMAGE_NAME}/versions"
+              else
+                API_PATH="/users/${OWNER}/packages/container/${IMAGE_NAME}/versions"
+              fi
+
+              resp=$(gh api "$API_PATH" -H "Accept: application/vnd.github.v3+json" --jq '.') || true
               if [ -z "$resp" ] || [ "$resp" = "null" ]; then
                 continue
               fi
-              # Use jq to extract ids safely and join them with spaces
+
+              # Ensure resp is an array
+              if ! echo "$resp" | jq -e 'type == "array"' >/dev/null 2>&1; then
+                preview=$(echo "$resp" | jq -c '.' 2>/dev/null || echo "$resp" | head -c200)
+                echo "Unexpected API response from gh api (not array): $preview"
+                continue
+              fi
+
+              # Extract ids that contain the requested tag
               ids=$(echo "$resp" | jq -r --arg tag "$TAG_TO_DELETE" '[.[] | select(.metadata != null and ((.metadata.tags // []) | index($tag))) | .id] | join(" ")')
               if [ -z "$ids" ]; then
                 continue
               fi
+
               for id in $ids; do
                 if [ -n "$id" ] && [ "$id" != "None" ]; then
-                  echo "Deleting version id $id via $NAMESPACE API"
-                  curl -s -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions/${id}" || true
+                  echo "Deleting version id $id via $NAMESPACE API (gh)"
+                  gh api -X DELETE "/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions/${id}" || true
                 fi
               done
             done
@@ -289,7 +310,7 @@ jobs:
           for ver in "${VERSIONS[@]}"; do
             TAG_BASE="KC${ver}-${TAG_INPUT}"
             TAGS="$TAG_BASE"
-            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+            if [ "$LATEST_FLAG" = "true" ]; then
               TAGS="$TAGS KC${ver}-latest"
             fi
 
@@ -300,7 +321,7 @@ jobs:
               ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}-arm64 \
               --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}
 
-            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+            if [ "$LATEST_FLAG" = "true" ]; then
               TAG_LATEST="KC${ver}-latest"
               docker buildx imagetools create \
                 ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}-amd64 \
@@ -308,13 +329,10 @@ jobs:
                 --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}
             fi
 
-            # Optionnel : supprimer les images suffixées pour l'utilisateur final
-            # Utilise l'API GitHub Packages pour supprimer les versions du package container
-
             # delete arch-suffixed tags
             delete_suffix_tag "${TAG_BASE}-amd64"
             delete_suffix_tag "${TAG_BASE}-arm64"
-            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+            if [ "$LATEST_FLAG" = "true" ]; then
               delete_suffix_tag "${TAG_LATEST}-amd64"
               delete_suffix_tag "${TAG_LATEST}-arm64"
             fi
