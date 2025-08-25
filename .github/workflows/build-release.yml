@@ -283,7 +283,17 @@ jobs:
                 if [ -z "$resp" ] || [ "$resp" = "null" ]; then
                   continue
                 fi
-                ids=$(echo "$resp" | python3 -c 'import sys,json; data=json.load(sys.stdin); print(" ".join(str(d.get("id")) for d in data if d.get("metadata") and "'""$TAG_TO_DELETE"'" in d.get("metadata",{}).get("tags",[])))')
+                # Ensure jq is available (install on runner if needed)
+                if ! command -v jq >/dev/null 2>&1; then
+                  echo "jq not found, installing..."
+                  sudo apt-get update -y
+                  sudo apt-get install -y jq
+                fi
+                # Use jq to extract ids safely and join them with spaces
+                ids=$(echo "$resp" | jq -r --arg tag "$TAG_TO_DELETE" '[.[] | select(.metadata != null and ((.metadata.tags // []) | index($tag))) | .id] | join(" ")')
+                if [ -z "$ids" ]; then
+                  continue
+                fi
                 for id in $ids; do
                   if [ -n "$id" ] && [ "$id" != "None" ]; then
                     echo "Deleting version id $id via $NAMESPACE API"
