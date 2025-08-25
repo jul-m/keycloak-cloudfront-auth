@@ -148,9 +148,6 @@ jobs:
           name: keycloak-cloudfront-auth-jars
           path: dist/
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -172,28 +169,41 @@ jobs:
           TAG_INPUT="${{ inputs.tag }}"
           LATEST_FLAG="${{ inputs.latest }}"
 
-          # Export build cache localement for this version+platform
-          CACHE_DIR="cache/${KC_VERSION}-${PLATFORM}"
-          mkdir -p "$CACHE_DIR"
+          # Définir tags suffixés par arch
+          TAG1="KC${KC_VERSION}-${TAG_INPUT}-${PLATFORM}"
+          if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+            TAG2="KC${KC_VERSION}-latest-${PLATFORM}"
+          fi
 
-          echo "Building cache for Keycloak $KC_VERSION on $PLATFORM"
+          echo "Building and pushing image for Keycloak $KC_VERSION on $PLATFORM with tags: ${TAG1} ${TAG2:-}" 
 
-          # Use run.sh to call docker-build and export cache locally (no push)
-          ./run.sh docker-build demo "$KC_VERSION" -- --platform=linux/${PLATFORM} \
-            --cache-to type=local,dest=$CACHE_DIR,mode=max \
-            --cache-repo "" \
-            --load
-          
-          # Le buildx ci-dessus a déjà poussé une image multi-arch (manifest) pour ${TAG1}
-          # Upload cache directory as artifact for the final job
-          ART_NAME="build-cache-${KC_VERSION}-${PLATFORM}"
-        
-      - name: Upload build cache artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ format('build-cache-{0}-{1}', matrix.kc_version, matrix.platform) }}
-          path: cache/${{ matrix.kc_version }}-${{ matrix.platform }}
-          retention-days: 1
+          # Determine provider jar used for this KC version
+          PROVIDER_JAR="$(ls dist/keycloak-cloudfront-auth-*-KC${KC_VERSION}*.jar 2>/dev/null | head -n1 || true)"
+          if [ -n "$PROVIDER_JAR" ]; then
+            PROVIDER_JAR_NAME="$(basename "$PROVIDER_JAR")"
+          else
+            echo "No provider JAR found for KC ${KC_VERSION} in dist/" >&2
+            exit 1
+          fi
+
+          TAGS_TO_PASS=("${TAG1}")
+          if [ "${LATEST_FLAG}" = "true" ] || [ "${LATEST_FLAG}" = "True" ]; then
+            TAGS_TO_PASS+=("${TAG2}")
+          fi
+
+          echo "Invoking run.sh docker-build demo ${KC_VERSION} with tags: ${TAGS_TO_PASS[*]}"
+          # Pass GitHub Actions BuildKit cache flags after -- so scripts/docker-build.sh
+          # forwards them to 'docker build' via DOCKER_EXTRA_ARGS.
+          ./run.sh docker-build demo "${KC_VERSION}" ${TAGS_TO_PASS[*]} -- \
+            --cache-to type=gha,mode=max --cache-from type=gha
+
+          # Tag and push each created local image to GHCR
+          for t in "${TAGS_TO_PASS[@]}"; do
+            echo "Tagging and pushing keycloak-cloudfront-auth-demo:${t} -> ghcr.io/${OWNER}/${IMAGE_NAME}:${t}"
+            docker tag "${IMAGE_NAME}:${t}" "ghcr.io/${OWNER}/${IMAGE_NAME}:${t}"
+            docker push "ghcr.io/${OWNER}/${IMAGE_NAME}:${t}"
+          done
+  
 
   # Job 3: Finalisation - création des manifests multi-arch et release
   finalize-release:
@@ -218,31 +228,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Set up Docker Buildx
         if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
         uses: docker/setup-buildx-action@v3
-
-      - name: Download build cache artifacts
-        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
-        run: |
-          set -euo pipefail
-          mkdir -p cache
-          VERSIONS_JSON='${{ needs.build-jars.outputs.versions }}'
-          IFS=' ' read -r -a VERSIONS <<< "$(echo "$VERSIONS_JSON" | python3 -c 'import sys,json; print(" ".join(json.load(sys.stdin)))')"
-          for ver in "${VERSIONS[@]}"; do
-            for arch in amd64 arm64; do
-              ART_NAME="build-cache-${ver}-${arch}"
-              echo "Downloading artifact $ART_NAME"
-              # download via actions/download-artifact is simpler, but we use curl fallback
-              # Use the action instead
-            done
-          done
-
-      - name: Download all build cache artifacts
-        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
-        uses: actions/download-artifact@v4
-        with:
-          path: cache/
 
       - name: Set up QEMU and Buildx for final multi-arch push
         if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
@@ -267,19 +256,50 @@ jobs:
               TAGS="$TAGS KC${ver}-latest"
             fi
 
-            # Use local cache directories as cache-from for buildx
-            CACHE_AMD="cache/${ver}-amd64"
-            CACHE_ARM="cache/${ver}-arm64"
+            echo "Creating multi-arch manifest for $TAG_BASE from arch-specific images"
+            # Create manifest from the suffixed images pushed by per-arch jobs
+            docker buildx imagetools create \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}-amd64 \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}-arm64 \
+              --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}
 
-            echo "Final buildx push for $TAG_BASE using local caches"
-            docker buildx build \
-              --platform linux/amd64,linux/arm64 \
-              --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE} \
-              --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE} \
-              --cache-from type=local,src=${CACHE_AMD} \
-              --cache-from type=local,src=${CACHE_ARM} \
-              --push \
-              docker/demo
+            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+              TAG_LATEST="KC${ver}-latest"
+              docker buildx imagetools create \
+                ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}-amd64 \
+                ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}-arm64 \
+                --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}
+            fi
+
+            # Optionnel : supprimer les images suffixées pour l'utilisateur final
+            # Utilise l'API GitHub Packages pour supprimer les versions du package container
+            delete_suffix_tag() {
+              local TAG_TO_DELETE="$1"
+              echo "Attempting to delete package version(s) for tag: $TAG_TO_DELETE"
+              # Try orgs then users
+              for NAMESPACE in orgs users; do
+                VERSIONS_URL="https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions"
+                resp=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$VERSIONS_URL")
+                if [ -z "$resp" ] || [ "$resp" = "null" ]; then
+                  continue
+                fi
+                ids=$(echo "$resp" | python3 -c 'import sys,json; data=json.load(sys.stdin); print(" ".join(str(d.get("id")) for d in data if d.get("metadata") and "'""$TAG_TO_DELETE"'" in d.get("metadata",{}).get("tags",[])))')
+                for id in $ids; do
+                  if [ -n "$id" ] && [ "$id" != "None" ]; then
+                    echo "Deleting version id $id via $NAMESPACE API"
+                    curl -s -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions/${id}" || true
+                  fi
+                done
+              done
+            }
+
+            # delete arch-suffixed tags
+            delete_suffix_tag "${TAG_BASE}-amd64"
+            delete_suffix_tag "${TAG_BASE}-arm64"
+            if [ "$LATEST_FLAG" = "true" ] || [ "$LATEST_FLAG" = "True" ]; then
+              delete_suffix_tag "${TAG_LATEST}-amd64"
+              delete_suffix_tag "${TAG_LATEST}-arm64"
+            fi
           done
 
       - name: Create GitHub release for tag (includes all built JARs)
