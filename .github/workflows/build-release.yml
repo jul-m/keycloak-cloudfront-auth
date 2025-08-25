@@ -233,10 +233,6 @@ jobs:
         if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
         uses: docker/setup-buildx-action@v3
 
-      - name: Set up QEMU and Buildx for final multi-arch push
-        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
-        uses: docker/setup-buildx-action@v3
-
       - name: Install jq for JSON parsing
         if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
         run: |
@@ -253,9 +249,6 @@ jobs:
           IMAGE_NAME="keycloak-cloudfront-auth-demo"
           TAG_INPUT="${{ inputs.tag }}"
           LATEST_FLAG="${{ inputs.latest }}"
-
-          # Ensure we have a token for package deletions — fail early if absent
-          : "${GITHUB_TOKEN:?GITHUB_TOKEN is required for deleting package versions}"
 
           # Authenticate gh CLI with the workflow token so gh api calls work in the runner
           echo "${GITHUB_TOKEN}" | gh auth login --with-token >/dev/null 2>&1 || true
@@ -275,23 +268,9 @@ jobs:
               return 0
             fi
 
-            # Use /user API path (packages owned by the authenticated user)
-            API_PATH="/user/packages/container/${IMAGE_NAME}/versions"
-
             # Call gh api with recommended headers and explicit API version
-            resp=$(gh api "$API_PATH" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" --jq '.') || true
-            if [ -z "$resp" ] || [ "$resp" = "null" ]; then
-              # Diagnostic: try to list container packages for the authenticated user to check existence/permissions
-              echo "API returned empty/null for $API_PATH — attempting to list user packages for debugging"
-              pkg_list=$(gh api "/user/packages" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" --jq '.' 2>/dev/null || true)
-              if [ -n "$pkg_list" ] && [ "$pkg_list" != "null" ]; then
-                echo "Packages visible for authenticated user:"
-                echo "$pkg_list" | jq -r '.[]?.name' || echo "$pkg_list" | head -c400
-              else
-                echo "No packages visible for authenticated user (or insufficient permissions)."
-              fi
-              return 0
-            fi
+            resp=$(gh api "/user/packages/container/${IMAGE_NAME}/versions" \
+              -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" --jq '.') || true
 
             # Ensure resp is an array
             if ! echo "$resp" | jq -e 'type == "array"' >/dev/null 2>&1; then
@@ -344,6 +323,17 @@ jobs:
               delete_suffix_tag "${TAG_LATEST}-arm64"
             fi
           done
+
+          if [ "$LATEST_FLAG" = "true" ]; then
+            # Determine the newest KC version
+            NEWEST=$(printf "%s\n" "${VERSIONS[@]}" | sort -V | tail -n1)
+            GLOBAL_LATEST_TAG="KC${NEWEST}-latest"
+            echo "Creating top-level 'latest' manifest from ${GLOBAL_LATEST_TAG}-amd64 and -arm64"
+            docker buildx imagetools create \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${GLOBAL_LATEST_TAG}-amd64 \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${GLOBAL_LATEST_TAG}-arm64 \
+              --tag ghcr.io/${OWNER}/${IMAGE_NAME}:latest || true
+          fi
 
       - name: Create GitHub release for tag (includes all built JARs)
         id: create_release
