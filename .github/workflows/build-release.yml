@@ -129,7 +129,7 @@ jobs:
 
   # Job 2: Matrice — build par-arch (amd64, arm64) et export de cache local (pas de push)
   build-docker-images:
-    name: Build Docker Image Cache (KC${{ matrix.kc_version }} - ${{ matrix.platform }})
+    name: Build Docker Image - KC${{ matrix.kc_version }}-${{ matrix.platform }}
     needs: [build-jars]
     if: ${{ needs.build-jars.outputs.build_demo_image == 'true' }}
     strategy:
@@ -237,8 +237,16 @@ jobs:
         if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
         uses: docker/setup-buildx-action@v3
 
+      - name: Install jq for JSON parsing
+        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
       - name: Final multi-arch build and push
         if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           OWNER="${{ github.repository_owner }}"
@@ -246,8 +254,37 @@ jobs:
           TAG_INPUT="${{ inputs.tag }}"
           LATEST_FLAG="${{ inputs.latest }}"
 
+          # Ensure we have a token for package deletions — fail early if absent
+          : "${GITHUB_TOKEN:?GITHUB_TOKEN is required for deleting package versions}"
+
           VERSIONS_JSON='${{ needs.build-jars.outputs.versions }}'
-          IFS=' ' read -r -a VERSIONS <<< "$(echo "$VERSIONS_JSON" | python3 -c 'import sys,json; print(" ".join(json.load(sys.stdin)))')"
+          # Parse JSON array into bash array using jq (installed in the previous step)
+          readarray -t VERSIONS < <(echo "$VERSIONS_JSON" | jq -r '.[]')
+
+          # Function to delete package versions for a given tag
+          delete_suffix_tag() {
+            local TAG_TO_DELETE="$1"
+            echo "Attempting to delete package version(s) for tag: $TAG_TO_DELETE"
+            # Try orgs then users
+            for NAMESPACE in orgs users; do
+              VERSIONS_URL="https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions"
+              resp=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$VERSIONS_URL")
+              if [ -z "$resp" ] || [ "$resp" = "null" ]; then
+                continue
+              fi
+              # Use jq to extract ids safely and join them with spaces
+              ids=$(echo "$resp" | jq -r --arg tag "$TAG_TO_DELETE" '[.[] | select(.metadata != null and ((.metadata.tags // []) | index($tag))) | .id] | join(" ")')
+              if [ -z "$ids" ]; then
+                continue
+              fi
+              for id in $ids; do
+                if [ -n "$id" ] && [ "$id" != "None" ]; then
+                  echo "Deleting version id $id via $NAMESPACE API"
+                  curl -s -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions/${id}" || true
+                fi
+              done
+            done
+          }
 
           for ver in "${VERSIONS[@]}"; do
             TAG_BASE="KC${ver}-${TAG_INPUT}"
@@ -273,35 +310,6 @@ jobs:
 
             # Optionnel : supprimer les images suffixées pour l'utilisateur final
             # Utilise l'API GitHub Packages pour supprimer les versions du package container
-            delete_suffix_tag() {
-              local TAG_TO_DELETE="$1"
-              echo "Attempting to delete package version(s) for tag: $TAG_TO_DELETE"
-              # Try orgs then users
-              for NAMESPACE in orgs users; do
-                VERSIONS_URL="https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions"
-                resp=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" "$VERSIONS_URL")
-                if [ -z "$resp" ] || [ "$resp" = "null" ]; then
-                  continue
-                fi
-                # Ensure jq is available (install on runner if needed)
-                if ! command -v jq >/dev/null 2>&1; then
-                  echo "jq not found, installing..."
-                  sudo apt-get update -y
-                  sudo apt-get install -y jq
-                fi
-                # Use jq to extract ids safely and join them with spaces
-                ids=$(echo "$resp" | jq -r --arg tag "$TAG_TO_DELETE" '[.[] | select(.metadata != null and ((.metadata.tags // []) | index($tag))) | .id] | join(" ")')
-                if [ -z "$ids" ]; then
-                  continue
-                fi
-                for id in $ids; do
-                  if [ -n "$id" ] && [ "$id" != "None" ]; then
-                    echo "Deleting version id $id via $NAMESPACE API"
-                    curl -s -X DELETE -H "Authorization: Bearer ${GITHUB_TOKEN}" "https://api.github.com/${NAMESPACE}/${OWNER}/packages/container/${IMAGE_NAME}/versions/${id}" || true
-                  fi
-                done
-              done
-            }
 
             # delete arch-suffixed tags
             delete_suffix_tag "${TAG_BASE}-amd64"
