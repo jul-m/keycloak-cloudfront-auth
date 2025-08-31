@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag to publish (ex: 1.0.0, dev)'
+        description: 'Image tag (ex: 1.0.0, dev)'
         required: true
-        default: 'dev'
       latest:
         description: 'latest'
         required: false

@@ -1,5 +1,7 @@
 # Keycloak CloudFront Auth Extension
 
+[English Version - Version anglaise](README.md)
+
 > Protégez simplement et nativement vos applications publiées sur AWS CloudFront avec Keycloak.
 
 ## Présentation

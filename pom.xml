@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>Keycloak Provider: CloudFront Auth</name>
-    <description>Protect AWS CloudFront Distribution with Keycloak Authentication.</description>
+    <description>Protect your applications published on AWS CloudFront with Keycloak, simply and natively.</description>
 
     <inceptionYear>2025</inceptionYear>
 
@@ -41,13 +41,13 @@
         <url>https://github.com/jul-m/keycloak-cloudfront-auth/actions</url>
     </ciManagement>
 
-    <distributionManagement>
+    <!-- <distributionManagement>
         <repository>
             <id>github</id>
             <name>GitHub jul-m Apache Maven Packages</name>
             <url>https://maven.pkg.github.com/jul-m/keycloak-cloudfront-auth</url>
         </repository>
-    </distributionManagement>
+    </distributionManagement> -->
 
     <properties>
     <project-version>0.1.0</project-version>

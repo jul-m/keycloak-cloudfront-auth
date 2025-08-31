@@ -1,5 +1,7 @@
 # Démo : Keycloak + CloudFront Auth Simulator
 
+[English Version - Version anglaise](README.md)
+
 Cette démo permet d'explorer rapidement l'extension `keycloak-cloudfront-auth` avec Docker, sans rien déployer sur AWS.
 Elle combine une instance Keycloak préconfigurée avec un simulateur CloudFront local afin de reproduire le flux complet d'authentification (requête protégée → 403 interne → redirection vers Keycloak → callback → génération de cookies CloudFront signés).
 Le simulateur propose une page de diagnostic sur l'authentification, et la possibilité de définir une application web à afficher en cas d'authentification réussie.
