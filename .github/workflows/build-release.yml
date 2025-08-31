@@ -8,8 +8,8 @@ on:
         required: false
         default: 'all'
         type: string
-      tag:
-        description: 'Tag (ex: 1.0.0, dev)'
+      version:
+        description: 'Version (ex: 1.0.0)'
         required: true
         type: string
       latest:
@@ -56,12 +56,12 @@ jobs:
           fi
           # Convert comma-separated to space-separated
           KC_ARGS=$(echo "$KC_INPUT" | tr ',' ' ')
-          TAG_INPUT="${{ inputs.tag }}"
+          VERSION_INPUT="${{ inputs.version }}"
           LATEST_FLAG="${{ inputs.latest }}"
           if [ "$LATEST_FLAG" = "true" ]; then
             EXTRA_ARG="FINAL"
           else
-            EXTRA_ARG="$TAG_INPUT"
+            EXTRA_ARG="$VERSION_INPUT"
           fi
           echo "Running: ./run.sh build $KC_ARGS $EXTRA_ARG"
           ./run.sh build $KC_ARGS $EXTRA_ARG
@@ -162,7 +162,7 @@ jobs:
           IMAGE_NAME="keycloak-cloudfront-auth-demo"
           KC_VERSION="${{ matrix.kc_version }}"
           PLATFORM="${{ matrix.platform }}"
-          TAG_INPUT="${{ inputs.tag }}"
+          TAG_INPUT="${{ inputs.version }}"
           LATEST_FLAG="${{ inputs.latest }}"
 
           # Définir tags suffixés par arch
@@ -242,7 +242,7 @@ jobs:
           set -euo pipefail
           OWNER="${{ github.repository_owner }}"
           IMAGE_NAME="keycloak-cloudfront-auth-demo"
-          TAG_INPUT="${{ inputs.tag }}"
+          TAG_INPUT="${{ inputs.version }}"
           LATEST_FLAG="${{ inputs.latest }}"
 
           # Authenticate gh CLI with the workflow token so gh api calls work in the runner
@@ -336,8 +336,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ inputs.tag }}
-          release_name: ${{ inputs.tag }}
+          tag_name: v${{ inputs.version }}
+          release_name: v${{ inputs.version }}
           body: |
             Automated release for keycloak-cloudfront-auth.
             Keycloak versions included: ${{ needs.build-jars.outputs.versions }}
@@ -373,4 +373,4 @@ jobs:
           IFS=' ' read -r -a VERSIONS <<< "${{ needs.build-jars.outputs.versions }}"
           NEWEST=$(printf "%s\n" "${VERSIONS[@]}" | sort -V | tail -n1)
           
-          echo "published=ghcr.io/${OWNER}/${IMAGE_NAME}:KC${NEWEST}-${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          echo "published=ghcr.io/${OWNER}/${IMAGE_NAME}:KC${NEWEST}-${{ inputs.version }}" >> $GITHUB_OUTPUT
