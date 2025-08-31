@@ -1,0 +1,37 @@
+name: keycloak-cloudfront-auth-demo
+
+services:
+  keycloak:
+    image: ghcr.io/jul-m/keycloak-cloudfront-auth-demo:${KCA_KC_DEMO_VERSION:-latest}
+    container_name: kca-demo_keycloak
+    environment:
+      - KEYCLOAK_ADMIN=${KCA_KC_ADMIN_USER:-admin}                   # KC <= 25.0
+      - KEYCLOAK_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD:-admin}      # KC <= 25.0
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD:-admin}  # KC >= 26.0
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KCA_KC_ADMIN_USER:-admin}      # KC >= 26.0
+      - KC_HTTP_PORT=80
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=${KCA_KC_AUTH_REDIRECT_DELAY:-1}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=${KCA_KC_AUTH_REDIRECT_FALLBACK_DELAY:-2}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_ACCESS_ROLES=${KCA_KC_AUTH_ACCESS_ROLES:-cloudfront-access}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_AUTH_COOKIES_ATTRIBUTES=${KCA_KC_AUTH_AUTH_COOKIES_ATTRIBUTES:-Path=/; HttpOnly}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_DISPLAY_REQUEST_ID=${KCA_KC_AUTH_DISPLAY_REQUEST_ID:-true}
+    ports:
+      - "${KCA_KC_HOST_PORT:-8080}:80"
+    command:
+      - start-dev
+
+  cf-auth-sim:
+    image: ghcr.io/jul-m/keycloak-cloudfront-auth-simulator:${KCA_CF_AUTH_SIM_VERSION:-latest}
+    container_name: kca-demo_cf-auth-sim
+    environment:
+      - DEBUG_PAGE_NO_AUTH=${KCA_DEBUG_PAGE_NO_AUTH:-on_error}  # always, never or on_error
+      - KC_REALM_NAME=${KCA_KC_REALM_NAME:-cloudfront-auth-demo}
+      - KC_CLIENT_ID=${KCA_KC_CLIENT_ID:-cloudfront-demo-client}
+      - KC_CLIENT_SECRET=${KCA_KC_CLIENT_SECRET:-ClientSecret123}
+      - KC_CF_SIGN_KEY_ID=${KCA_CF_SIGN_KEY_ID:-ABCDEFGH}
+      - KC_URL=http://localhost:${KCA_KC_HOST_PORT:-8080}
+      - KC_INTERNAL_URL=http://kca-demo_keycloak
+      - APP_URL=${KCA_APP_URL:-}
+    ports:
+      - "${KCA_OPENRESTY_HOST_PORT:-8081}:80"

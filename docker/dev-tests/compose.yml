@@ -1,0 +1,57 @@
+name: keycloak-cloudfront-auth
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KCA_KC_VERSION:-latest}
+    container_name: kc-cloudfront-auth_keycloak
+    environment:
+      # Native Keycloak variables:
+      - KEYCLOAK_ADMIN=${KCA_KC_ADMIN_USER:-admin}                   # KC <= 25.0
+      - KEYCLOAK_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD:-admin}      # KC <= 25.0
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KCA_KC_ADMIN_PASSWORD:-admin}  # KC >= 26.0
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KCA_KC_ADMIN_USER:-admin}      # KC >= 26.0
+      - KC_HEALTH_ENABLED=true
+      - KC_HTTP_PORT=80
+      - KC_LOG_LEVEL=${KCA_KC_LOG_LEVEL:-WARN,fr.julm:INFO}
+      - KC_PROXY_HEADERS=xforwarded
+      # Keycloak config for provider:
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_DELAY=${KCA_KC_AUTH_REDIRECT_DELAY:-1}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_REDIRECT_FALLBACK_DELAY=${KCA_KC_AUTH_REDIRECT_FALLBACK_DELAY:-2}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_ACCESS_ROLES=${KCA_KC_AUTH_ACCESS_ROLES:-}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_AUTH_COOKIES_ATTRIBUTES=${KCA_KC_AUTH_AUTH_COOKIES_ATTRIBUTES:-}
+      - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_DISPLAY_REQUEST_ID=${KCA_KC_AUTH_DISPLAY_REQUEST_ID:-}
+      # Specific for Dev-Tests compose project:
+      - KCA_PROVIDER_JAR_NAME=${KCA_PROVIDER_JAR_NAME:-auto}
+      - KCA_OPENRESTY_HOST_PORT=${KCA_OPENRESTY_HOST_PORT:-8081}
+      - KCA_IMPORT_JSON_NAME=${KCA_IMPORT_JSON_NAME:-realm-config.json}
+      - KCA_KC_REALM_NAME=${KCA_KC_REALM_NAME:-cloudfront-test}
+      - KCA_KC_CLIENT_ID=${KCA_KC_CLIENT_ID:-cloudfront-test-client}
+      - KCA_KC_CLIENT_SECRET=${KCA_KC_CLIENT_SECRET:-TestSecret123}
+    ports:
+      - "${KCA_KC_HOST_PORT:-8080}:80"
+    volumes:
+      - ../../dist/:/mnt/dist/:ro
+      - ../../docker/dev-tests/configs:/mnt/configs:ro
+      - ../../docker/dev-tests/configure-start.sh:/configure-start.sh:ro
+      - ../../lib/:/mnt/lib:ro
+    entrypoint:
+      - /configure-start.sh
+
+
+  cf-auth-sim:
+    image: ghcr.io/jul-m/keycloak-cloudfront-auth-simulator:latest # Use kca cf-auth-sim img for installed luarocks dependencies
+    container_name: kc-cloudfront-auth_cf-auth-sim
+    environment:
+      - DEBUG_PAGE_NO_AUTH=${KCA_DEBUG_PAGE_NO_AUTH:-on_error}  # always, never, or on_error
+      - KC_REALM_NAME=${KCA_KC_REALM_NAME:-cloudfront-test}
+      - KC_CLIENT_ID=${KCA_KC_CLIENT_ID:-cloudfront-test-client}
+      - KC_CLIENT_SECRET=${KCA_KC_CLIENT_SECRET:-TestSecret123}
+      - KC_CF_SIGN_KEY_ID=${KCA_CF_SIGN_KEY_ID:-ABCDEFGH}
+      - KC_URL=http://localhost:${KCA_KC_HOST_PORT:-8080}
+      - KC_INTERNAL_URL=http://kc-cloudfront-auth_keycloak
+      - APP_URL=${KCA_APP_URL:-}
+    ports:
+      - "${KCA_OPENRESTY_HOST_PORT:-8081}:80"
+    volumes:
+      - ../cf-auth-sim/src/opt/cf-auth-sim:/opt/cf-auth-sim:ro
+      - ../cf-auth-sim/src/usr/local/openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro

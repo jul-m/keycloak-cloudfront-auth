@@ -1,0 +1,105 @@
+name: Integration Tests
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      keycloak_versions:
+        description: 'Keycloak versions to test (comma-separated, or "all")'
+        required: false
+        default: 'all'
+        type: string
+
+env:
+  # Increase heap and silence Maven transfer progress logs for clearer CI output
+  MAVEN_OPTS: '-Xmx1024m -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      # Use workflow_dispatch input when provided, otherwise default to 'all'
+      KEYCLOAK_VERSIONS: ${{ github.event.inputs.keycloak_versions || 'all' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Start Docker services
+        run: docker info
+
+      - name: Build and run integration tests for Keycloak ${{ env.KEYCLOAK_VERSIONS }}
+        run: ./run.sh build -t --keep-containers=never ${KEYCLOAK_VERSIONS}
+
+      - name: Verify build artifacts
+        run: |
+          ls -la dist/
+          # Accept any built JAR (the wrapper can build multiple versions)
+          if ls dist/keycloak-cloudfront-auth-*KC*.jar 1> /dev/null 2>&1; then
+            echo "✅ Build artifact(s) found"
+          else
+            echo "❌ No build artifacts found in dist/"
+            exit 1
+          fi
+
+      - name: Cleanup Docker containers
+        if: always()
+        run: |
+          docker-compose -f src/it/resources/docker-compose-test.yml down -v --remove-orphans || true
+          docker system prune -f || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-keycloak-${{ env.KEYCLOAK_VERSIONS }}
+          path: |
+            target/failsafe-reports/
+            target/surefire-reports/
+          retention-days: 7
+
+      - name: Test Build Docker images
+        run: |
+          # Test Build Docker images
+          echo "Build cf-auth-sim image"
+          ./run.sh docker-build cf-auth-sim
+
+          echo "Build demo images for each built Keycloak version"
+          set -euo pipefail
+          # Collect built JARs and extract KC versions
+          shopt -s nullglob || true
+          jars=( dist/keycloak-cloudfront-auth-*-KC*.jar )
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No built JARs found in dist/; skipping demo image builds"
+          else
+            versions=()
+            for j in "${jars[@]}"; do
+              v=$(basename "$j" | sed -n 's/.*-KC\([0-9]\+\.[0-9]\+\).*/\1/p')
+              if [ -n "$v" ]; then
+                versions+=("$v")
+              fi
+            done
+            # unique & sorted
+            IFS=$'\n' unique_versions=($(printf "%s\n" "${versions[@]}" | sort -u -V))
+            unset IFS
+            for ver in "${unique_versions[@]}"; do
+              echo "Building demo for Keycloak $ver"
+              ./run.sh docker-build demo "$ver"
+            done
+          fi
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Keycloak versions tested: ${KEYCLOAK_VERSIONS}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build & Test job status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+

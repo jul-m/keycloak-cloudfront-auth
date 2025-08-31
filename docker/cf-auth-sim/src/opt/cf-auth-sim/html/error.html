@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{PAGE_TITLE}}</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f6f8fa;
+        }
+        .container { 
+            max-width: 650px; 
+            background: white; 
+            padding: 40px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            text-align: center;
+        }
+        .error-code {
+            font-size: 48px;
+            font-weight: bold;
+            color: #dc3545;
+            margin-bottom: 10px;
+        }
+        h1 { 
+            color: #343a40; 
+            margin-bottom: 20px; 
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .message { 
+            background: #f8d7da; 
+            border-left: 4px solid #dc3545; 
+            color: #721c24; 
+            padding: 20px; 
+            border-radius: 6px; 
+            margin: 25px 0; 
+            text-align: left;
+        }
+        .retry-info { 
+            background: #d1ecf1; 
+            border-left: 4px solid #17a2b8; 
+            color: #0c5460; 
+            padding: 20px; 
+            border-radius: 6px; 
+            margin: 25px 0; 
+            text-align: center;
+        }
+        .tech-details { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6;
+            border-left: 4px solid #0056b3; 
+            padding: 20px; 
+            border-radius: 6px; 
+            margin: 25px 0; 
+            text-align: left;
+            color: #495057;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 8px;
+            background-color: #0167d4;
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        }
+        .countdown {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+    </style>
+    <script>
+        let retryTime = 30;
+        
+        function updateCountdown() {
+            const countdownEl = document.getElementById('countdown');
+            if (countdownEl && retryTime > 0) {
+                countdownEl.textContent = retryTime;
+                retryTime--;
+            } else if (retryTime <= 0 && {{AUTO_RETRY}}) {
+                window.location.reload();
+            }
+        }
+        
+        if (retryTime > 0 && {{AUTO_RETRY}}) {
+            setInterval(updateCountdown, 1000);
+            setTimeout(() => window.location.reload(), retryTime * 1000 + 1000);
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="error-code">{{ERROR_CODE}}</div>
+        <h1>{{ERROR_TITLE}}</h1>
+        
+        <div class="message">
+            <strong>⚠️ Issue detected:</strong><br>
+            {{ERROR_DESCRIPTION}}
+        </div>
+
+        <div class="tech-details">
+            <strong>🔧 Technical information:</strong><br>
+            {{TECHNICAL_INFO}}
+        </div>
+
+        <div class="retry-info">
+            🔄 Automatic reload in <span id="countdown" class="countdown">30</span> seconds.
+            <div class="actions">
+                <button onclick="window.location.reload()" class="btn">
+                    🔄 Reload Now
+                </button>
+            </div>                
+        </div>
+        
+        <div class="timestamp">
+            Generated on <span id="timestamp"></span>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('timestamp').textContent = new Date().toLocaleString();
+    </script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>fr.julm.keycloak.providers.auth.cloudfront</groupId>
+    <artifactId>keycloak-cloudfront-auth</artifactId>
+    <version>${revision}</version>
+    <packaging>jar</packaging>
+
+    <name>Keycloak Provider: CloudFront Auth</name>
+    <description>Protect AWS CloudFront Distribution with Keycloak Authentication.</description>
+
+    <inceptionYear>2025</inceptionYear>
+
+    <developers>
+        <developer>
+            <id>jul-m</id>
+            <name>Julien MEUGNIER</name>
+            <email>contact@jul-m.fr</email>
+            <url>https://jul-m.fr</url>
+            <timezone>Europe/Paris</timezone>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/jul-m/keycloak-cloudfront-auth.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/jul-m/keycloak-cloudfront-auth.git</developerConnection>
+        <url>https://github.com/jul-m/keycloak-cloudfront-auth.git</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <issueManagement>
+        <url>https://github.com/jul-m/keycloak-cloudfront-auth/issues</url>
+        <system>GitHub Issues</system>
+    </issueManagement>
+
+    <ciManagement>
+        <system>Github Actions</system>
+        <url>https://github.com/jul-m/keycloak-cloudfront-auth/actions</url>
+    </ciManagement>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub jul-m Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/jul-m/keycloak-cloudfront-auth</url>
+        </repository>
+    </distributionManagement>
+
+    <properties>
+    <project-version>0.1.0</project-version>
+    <keycloak-version.major>26</keycloak-version.major>
+    <keycloak-version.minor>3</keycloak-version.minor>
+    <keycloak-version.major-minor>${keycloak-version.major}.${keycloak-version.minor}</keycloak-version.major-minor>
+    <build-suffix>-SNAPSHOT</build-suffix>
+    <revision>${project-version}-KC${keycloak-version.major-minor}${build-suffix}</revision>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
+        <junit.version>5.10.3</junit.version>
+        <mockito.version>5.8.0</mockito.version>
+        <assertj.version>3.24.2</assertj.version>
+        <rest-assured.version>5.3.2</rest-assured.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.keycloak</groupId>
+                <artifactId>keycloak-parent</artifactId>
+                <version>${keycloak-version.major-minor}.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-server-spi</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-server-spi-private</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-services</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.freemarker</groupId>
+            <artifactId>freemarker</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Test dependencies for integration tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <version>${rest-assured.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-admin-client</artifactId>
+            <!-- Admin client must use major-only stable stream: XX.0.0 -->
+            <version>${keycloak-version.major}.0.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>java-dotenv</artifactId>
+            <version>5.2.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.0</version>
+                <configuration>
+                    <source>${maven.compiler.release}</source>
+                    <target>${maven.compiler.release}</target>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>compile-integration-tests</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                        <configuration>
+                            <testSourceRoots>
+                                <testSourceRoot>src/it/java</testSourceRoot>
+                            </testSourceRoots>
+                            <testOutputDirectory>target/it-classes</testOutputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-integration-test-sources</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/it/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-integration-test-resources</id>
+                        <phase>generate-test-resources</phase>
+                        <goals>
+                            <goal>add-test-resource</goal>
+                        </goals>
+                        <configuration>
+                            <resources>
+                                <resource>
+                                    <directory>src/it/resources</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.3</version>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.3</version>
+                <configuration>
+                    <testClassesDirectory>target/test-classes</testClassesDirectory>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationTest.java</include>
+                    </includes>
+                    <systemPropertyVariables>
+                        <keycloak.docker.tag>${keycloak-version.major-minor}.0</keycloak.docker.tag>
+                        <java.util.logging.config.file>${project.build.testOutputDirectory}/logging.properties</java.util.logging.config.file>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

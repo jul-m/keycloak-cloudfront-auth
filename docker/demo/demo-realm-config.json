@@ -1,0 +1,87 @@
+{
+  "realm": "cloudfront-auth-demo",
+  "enabled": true,
+  "accessTokenLifespan": 3600,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "clients": [
+    {
+      "clientId": "cloudfront-demo-client",
+      "secret": "ClientSecret123",
+      "enabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:8081",
+      "baseUrl": "http://localhost:8081",
+      "redirectUris": ["*"],
+      "protocolMappers": [
+        {
+          "name": "cloudfront-auth-config",
+          "protocol": "openid-connect",
+          "protocolMapper": "fr.julm.keycloak.providers.auth.cloudfront.CloudFrontAuthConfigMapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "cloudfront-demo-client": [
+        {
+          "name": "cloudfront-access",
+          "description": "Access role for CloudFront resources",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "user1",
+      "enabled": true,
+      "email": "user1@example.com",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Authorized User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "cloudfront-demo-client": [
+          "cloudfront-access"
+        ]
+      }
+    },
+    {
+      "username": "user2",
+      "enabled": true,
+      "email": "user2@example.com",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Unauthorized User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+      }
+    }
+  ]
+}

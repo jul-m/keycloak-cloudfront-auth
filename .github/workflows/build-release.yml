@@ -1,0 +1,377 @@
+name: Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      kc_versions:
+        description: 'Keycloak versions to build (comma-separated, or "all")'
+        required: false
+        default: 'all'
+        type: string
+      tag:
+        description: 'Tag (ex: 1.0.0, dev)'
+        required: true
+        default: 'dev'
+        type: string
+      latest:
+        description: 'latest'
+        required: false
+        default: false
+        type: boolean
+      build_demo_image:
+        description: 'Build demo Docker image'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-jars:
+    runs-on: ubuntu-24.04
+    name: Build JAR Files
+    outputs:
+      versions: ${{ steps.extract.outputs.versions }}
+      jars: ${{ steps.discover.outputs.jars }}
+      build_demo_image: ${{ inputs.build_demo_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build provider JAR(s) for requested Keycloak versions
+        id: build_jars
+        run: |
+          set -euo pipefail
+          KC_INPUT="${{ inputs.kc_versions }}"
+          if [ -z "$KC_INPUT" ]; then
+            KC_INPUT="all"
+          fi
+          # Convert comma-separated to space-separated
+          KC_ARGS=$(echo "$KC_INPUT" | tr ',' ' ')
+          TAG_INPUT="${{ inputs.tag }}"
+          LATEST_FLAG="${{ inputs.latest }}"
+          if [ "$LATEST_FLAG" = "true" ]; then
+            EXTRA_ARG="FINAL"
+          else
+            EXTRA_ARG="$TAG_INPUT"
+          fi
+          echo "Running: ./run.sh build $KC_ARGS $EXTRA_ARG"
+          ./run.sh build $KC_ARGS $EXTRA_ARG
+          echo "build_done=true" >> $GITHUB_OUTPUT || true
+
+      - name: Discover built JARs and KC versions
+        id: discover
+        run: |
+          set -euo pipefail
+          shopt -s nullglob || true
+          jars=( dist/keycloak-cloudfront-auth-*-KC*.jar )
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No built JARs found in dist/" >&2
+            ls -la dist/ || true
+            exit 1
+          fi
+          echo "Found JARs:"
+          for j in "${jars[@]}"; do
+            echo "  $j"
+          done
+
+          # Extract versions like 26.3 from filenames and collect unique
+          versions=()
+          for j in "${jars[@]}"; do
+            v=$(basename "$j" | sed -n 's/.*-KC\([0-9]\+[.][0-9]\+\).*/\1/p')
+            if [ -n "$v" ]; then
+              versions+=("$v")
+            fi
+          done
+          # unique
+          IFS=$'\n' unique_versions=($(printf "%s\n" "${versions[@]}" | sort -u -V))
+          unset IFS
+          echo "versions=${unique_versions[*]}" >> "$GITHUB_OUTPUT"
+          echo "jars=${jars[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract KC versions as JSON for matrix
+        id: extract
+        run: |
+          set -euo pipefail
+          versions=()
+          for jar in dist/keycloak-cloudfront-auth-*-KC*.jar; do
+            if [ -f "$jar" ]; then
+              v=$(basename "$jar" | sed -n 's/.*-KC\([0-9]\+[.][0-9]\+\).*/\1/p')
+              if [ -n "$v" ]; then
+                versions+=("$v")
+              fi
+            fi
+          done
+          # Unique et trié
+          IFS=$'\n' unique_versions=($(printf "%s\n" "${versions[@]}" | sort -u -V))
+          unset IFS
+          json_array=$(printf '%s\n' "${unique_versions[@]}" | python3 -c 'import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+          echo "versions=$json_array" >> $GITHUB_OUTPUT
+          echo "Found KC versions: ${unique_versions[*]}"
+
+      - name: Upload JAR artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: keycloak-cloudfront-auth-jars
+          path: dist/keycloak-cloudfront-auth-*-KC*.jar
+          retention-days: 1
+
+  build-docker-images:
+    name: Build Docker Image - KC${{ matrix.kc_version }}-${{ matrix.platform }}
+    needs: [build-jars]
+    if: ${{ needs.build-jars.outputs.build_demo_image == 'true' }}
+    strategy:
+      matrix:
+        kc_version: ${{ fromJSON(needs.build-jars.outputs.versions) }}
+        platform: [amd64, arm64]
+      fail-fast: false
+    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download JAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: keycloak-cloudfront-auth-jars
+          path: dist/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        id: build
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          IMAGE_NAME="keycloak-cloudfront-auth-demo"
+          KC_VERSION="${{ matrix.kc_version }}"
+          PLATFORM="${{ matrix.platform }}"
+          TAG_INPUT="${{ inputs.tag }}"
+          LATEST_FLAG="${{ inputs.latest }}"
+
+          # Définir tags suffixés par arch
+          TAG1="KC${KC_VERSION}-${TAG_INPUT}-${PLATFORM}"
+          if [ "$LATEST_FLAG" = "true" ]; then
+            TAG2="KC${KC_VERSION}-latest-${PLATFORM}"
+          fi
+
+          echo "Building and pushing image for Keycloak $KC_VERSION on $PLATFORM with tags: ${TAG1} ${TAG2:-}" 
+
+          # Determine provider jar used for this KC version
+          PROVIDER_JAR="$(ls dist/keycloak-cloudfront-auth-*-KC${KC_VERSION}*.jar 2>/dev/null | head -n1 || true)"
+          if [ -n "$PROVIDER_JAR" ]; then
+            PROVIDER_JAR_NAME="$(basename "$PROVIDER_JAR")"
+          else
+            echo "No provider JAR found for KC ${KC_VERSION} in dist/" >&2
+            exit 1
+          fi
+
+          TAGS_TO_PASS=("${TAG1}")
+          if [ "${LATEST_FLAG}" = "true" ] || [ "${LATEST_FLAG}" = "True" ]; then
+            TAGS_TO_PASS+=("${TAG2}")
+          fi
+
+          echo "Invoking run.sh docker-build demo ${KC_VERSION} with tags: ${TAGS_TO_PASS[*]}"
+          # Pass GitHub Actions BuildKit cache flags after -- so scripts/docker-build.sh
+          # forwards them to 'docker build' via DOCKER_EXTRA_ARGS.
+          ./run.sh docker-build demo "${KC_VERSION}" ${TAGS_TO_PASS[*]} -- \
+            --cache-to type=gha,mode=max --cache-from type=gha
+
+          # Tag and push each created local image to GHCR
+          for t in "${TAGS_TO_PASS[@]}"; do
+            echo "Tagging and pushing keycloak-cloudfront-auth-demo:${t} -> ghcr.io/${OWNER}/${IMAGE_NAME}:${t}"
+            docker tag "${IMAGE_NAME}:${t}" "ghcr.io/${OWNER}/${IMAGE_NAME}:${t}"
+            docker push "ghcr.io/${OWNER}/${IMAGE_NAME}:${t}"
+          done
+  
+
+  finalize-release:
+    runs-on: ubuntu-24.04
+    name: Finalize Release
+    needs: [build-jars, build-docker-images]
+    if: always() && needs.build-jars.result == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download JAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: keycloak-cloudfront-auth-jars
+          path: dist/
+
+      - name: Log in to GitHub Container Registry
+        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Docker Buildx
+        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install jq for JSON parsing
+        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Final multi-arch build and push
+        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          OWNER="${{ github.repository_owner }}"
+          IMAGE_NAME="keycloak-cloudfront-auth-demo"
+          TAG_INPUT="${{ inputs.tag }}"
+          LATEST_FLAG="${{ inputs.latest }}"
+
+          # Authenticate gh CLI with the workflow token so gh api calls work in the runner
+          echo "${GITHUB_TOKEN}" | gh auth login --with-token >/dev/null 2>&1 || true
+          gh api /user -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" --jq '.login' || true
+
+          VERSIONS_JSON='${{ needs.build-jars.outputs.versions }}'
+          # Parse JSON array into bash array using jq (installed in the previous step)
+          readarray -t VERSIONS < <(echo "$VERSIONS_JSON" | jq -r '.[]')
+
+          # Function to delete package versions for a given tag using gh CLI
+          delete_suffix_tag() {
+            local TAG_TO_DELETE="$1"
+            echo "Attempting to delete package version(s) for tag: $TAG_TO_DELETE"
+            # gh must be available on runners; use it to list package versions and delete
+            if ! command -v gh >/dev/null 2>&1; then
+              echo "gh CLI not available — cannot delete package versions"
+              return 0
+            fi
+
+            # Call gh api with recommended headers and explicit API version
+            resp=$(gh api "/user/packages/container/${IMAGE_NAME}/versions" \
+              -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" --jq '.') || true
+
+            # Ensure resp is an array
+            if ! echo "$resp" | jq -e 'type == "array"' >/dev/null 2>&1; then
+              preview=$(echo "$resp" | jq -c '.' 2>/dev/null || echo "$resp" | head -c200)
+              echo "Unexpected API response from gh api (not array): $preview"
+              return 0
+            fi
+
+            # Extract ids that contain the requested tag
+            ids=$(echo "$resp" | jq -r --arg tag "$TAG_TO_DELETE" '[.[] | select(.metadata != null and ((.metadata.tags // []) | index($tag))) | .id] | join(" ")')
+            if [ -z "$ids" ]; then
+              return 0
+            fi
+
+            for id in $ids; do
+              if [ -n "$id" ] && [ "$id" != "None" ]; then
+                echo "Deleting version id $id via user API (gh)"
+                gh api -X DELETE "/user/packages/container/${IMAGE_NAME}/versions/${id}" || true
+              fi
+            done
+          }
+
+          for ver in "${VERSIONS[@]}"; do
+            TAG_BASE="KC${ver}-${TAG_INPUT}"
+            TAGS="$TAG_BASE"
+            if [ "$LATEST_FLAG" = "true" ]; then
+              TAGS="$TAGS KC${ver}-latest"
+            fi
+
+            echo "Creating multi-arch manifest for $TAG_BASE from arch-specific images"
+            # Create manifest from the suffixed images pushed by per-arch jobs
+            docker buildx imagetools create \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}-amd64 \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}-arm64 \
+              --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_BASE}
+
+            if [ "$LATEST_FLAG" = "true" ]; then
+              TAG_LATEST="KC${ver}-latest"
+              docker buildx imagetools create \
+                ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}-amd64 \
+                ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}-arm64 \
+                --tag ghcr.io/${OWNER}/${IMAGE_NAME}:${TAG_LATEST}
+            fi
+
+            # delete arch-suffixed tags
+            delete_suffix_tag "${TAG_BASE}-amd64"
+            delete_suffix_tag "${TAG_BASE}-arm64"
+            if [ "$LATEST_FLAG" = "true" ]; then
+              delete_suffix_tag "${TAG_LATEST}-amd64"
+              delete_suffix_tag "${TAG_LATEST}-arm64"
+            fi
+          done
+
+          if [ "$LATEST_FLAG" = "true" ]; then
+            # Determine the newest KC version
+            NEWEST=$(printf "%s\n" "${VERSIONS[@]}" | sort -V | tail -n1)
+            GLOBAL_LATEST_TAG="KC${NEWEST}-latest"
+            echo "Creating top-level 'latest' manifest from ${GLOBAL_LATEST_TAG}-amd64 and -arm64"
+            docker buildx imagetools create \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${GLOBAL_LATEST_TAG}-amd64 \
+              ghcr.io/${OWNER}/${IMAGE_NAME}:${GLOBAL_LATEST_TAG}-arm64 \
+              --tag ghcr.io/${OWNER}/${IMAGE_NAME}:latest || true
+          fi
+
+      - name: Create GitHub release for tag (includes all built JARs)
+        id: create_release
+        uses: comnoco/create-release-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.tag }}
+          release_name: ${{ inputs.tag }}
+          body: |
+            Automated release for keycloak-cloudfront-auth.
+            Keycloak versions included: ${{ needs.build-jars.outputs.versions }}
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: ${{ ! inputs.latest }}
+
+      - name: Upload provider JARs to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          UPLOAD_URL='${{ steps.create_release.outputs.upload_url }}'
+          # UPLOAD_URL contains a templated {?name,label} suffix; strip it for direct use
+          UPLOAD_URL_BASE="${UPLOAD_URL%%{*}"
+          
+          # Upload all JAR files from dist/
+          for j in dist/keycloak-cloudfront-auth-*-KC*.jar; do
+            if [ -f "$j" ]; then
+              filename=$(basename "$j")
+              echo "Uploading $j as $filename to release"
+              curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/java-archive" --data-binary @"$j" "${UPLOAD_URL_BASE}?name=${filename}"
+            fi
+          done
+
+      - name: Output published image
+        if: ${{ needs.build-jars.outputs.build_demo_image == 'true' && needs.build-docker-images.result == 'success' }}
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          IMAGE_NAME="keycloak-cloudfront-auth-demo"
+          
+          # Déterminer la version KC la plus récente
+          IFS=' ' read -r -a VERSIONS <<< "${{ needs.build-jars.outputs.versions }}"
+          NEWEST=$(printf "%s\n" "${VERSIONS[@]}" | sort -V | tail -n1)
+          
+          echo "published=ghcr.io/${OWNER}/${IMAGE_NAME}:KC${NEWEST}-${{ inputs.tag }}" >> $GITHUB_OUTPUT
