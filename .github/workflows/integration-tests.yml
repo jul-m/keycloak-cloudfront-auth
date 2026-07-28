@@ -28,7 +28,7 @@ jobs:
       build_suffix: ${{ steps.set-versions.outputs.build_suffix }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Determine versions to test
         id: set-versions
@@ -69,7 +69,7 @@ jobs:
       KEYCLOAK_VERSION: ${{ matrix.version }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -79,7 +79,7 @@ jobs:
           cache: maven
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@v5
 
       - name: Build and run integration tests for Keycloak ${{ matrix.version }}
         run: ./run.sh build -t --keep-containers=never ${{ matrix.version }} ${{ needs.prepare.outputs.build_suffix }}
@@ -98,7 +98,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-keycloak-${{ matrix.version }}-${{ needs.prepare.outputs.build_suffix }}
           path: |
@@ -117,10 +117,10 @@ jobs:
     name: Build cf-auth-sim Docker Image
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@v5
 
       - name: Build cf-auth-sim image
         run: ./run.sh docker-build cf-auth-sim
