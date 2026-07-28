@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
 # Available Keycloak versions (major.minor)
-KEYCLOAK_VERSIONS=("25.0" "26.0" "26.1" "26.2" "26.3")
+KEYCLOAK_VERSIONS=("25.0" "26.0" "26.1" "26.2" "26.3" "26.4" "26.5" "26.6" "26.7")
 
 # Function to validate Keycloak version
 validate_version() {
