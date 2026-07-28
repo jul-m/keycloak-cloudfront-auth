@@ -131,14 +131,48 @@ jobs:
     needs: [prepare, test, build-cf-auth-sim]
     name: Summary
     if: always()
+    permissions:
+      checks: write
     steps:
       - name: Generate Test Summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          CF_AUTH_SIM_RESULT: ${{ needs.build-cf-auth-sim.result }}
         run: | # shell
           # Generate Test Summary
           echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Keycloak versions tested: ${{ needs.prepare.outputs.keycloak_versions }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Test and demo build status: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Build cf-auth-sim status: ${{ needs.build-cf-auth-sim.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Test and demo build status: $TEST_RESULT" >> $GITHUB_STEP_SUMMARY
+          echo "- Build cf-auth-sim status: $CF_AUTH_SIM_RESULT" >> $GITHUB_STEP_SUMMARY
+
+          CHECK_CONCLUSION=success
+          CHECK_RESULT=OK
+          if [ "$PREPARE_RESULT" != "success" ] || \
+             [ "$TEST_RESULT" != "success" ] || \
+             [ "$CF_AUTH_SIM_RESULT" != "success" ]; then
+            CHECK_CONCLUSION=failure
+            CHECK_RESULT=KO
+          fi
+
+          echo "- Final check: $CHECK_RESULT" >> $GITHUB_STEP_SUMMARY
+
+          jq -n \
+            --arg name "Integration Tests - Final Check" \
+            --arg head_sha "$GITHUB_SHA" \
+            --arg conclusion "$CHECK_CONCLUSION" \
+            --arg result "$CHECK_RESULT" \
+            --arg summary "prepare=$PREPARE_RESULT, test=$TEST_RESULT, build-cf-auth-sim=$CF_AUTH_SIM_RESULT" \
+            '{name: $name, head_sha: $head_sha, status: "completed", conclusion: $conclusion, output: {title: $result, summary: $summary}}' \
+            | gh api --method POST \
+                "/repos/${GITHUB_REPOSITORY}/check-runs" \
+                --input -
+
+          echo "$CHECK_RESULT"
+          if [ "$CHECK_CONCLUSION" = "failure" ]; then
+            exit 1
+          fi
 
 
