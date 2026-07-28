@@ -59,7 +59,7 @@ public final class ITEnvConfig {
         if (appUrl != null && !appUrl.isBlank()) {
             HOME_URL = appUrl;
         } else {
-            HOME_URL = "http://localhost:" + valueFor("KCA_OPENRESTY_HOST_PORT", "8081");
+            HOME_URL = "http://localhost:" + valueFor("KCA_CF_AUTH_SIM_HOST_PORT", "8081");
         }
     }
 

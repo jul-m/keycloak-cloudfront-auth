@@ -1,0 +1,5 @@
+# Metadata for scripts and CI, like supported Keycloak versions
+# Array in one line for easy parsing in shell scripts
+
+# supported_kc_versions: Don't forget update mapping in scripts/fetch-kc-config-cli.sh
+supported_kc_versions: ["25.0","26.0","26.1","26.2","26.3","26.4","26.5","26.6","26.7"]

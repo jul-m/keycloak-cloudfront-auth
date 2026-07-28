@@ -45,7 +45,7 @@ Default ports and container names
 
 ## Container roles
 - **keycloak**: Keycloak instance (image `ghcr.io/jul-m/keycloak-cloudfront-auth-demo`) containing the `keycloak-cloudfront-auth` extension. Provides the admin console, the demo realm, and the `/cloudfront-auth/` endpoint used by CloudFront.
-- **cf-auth-sim**: CloudFront simulator with a diagnostic page. It plays the role of CloudFront to test the full flow locally (403 → Keycloak → callback → signed CloudFront cookies). It also shows session details (display conditions controlled with `KCA_DEBUG_PAGE_NO_AUTH`). You can set an app URL to present after successful authentication (`KCA_APP_URL`).
+- **cf-auth-sim**: CloudFront simulator with a diagnostic page (image `ghcr.io/jul-m/keycloak-cloudfront-auth-simulator`). It plays the role of CloudFront to test the full flow locally (403 → Keycloak → callback → signed CloudFront cookies). It also shows session details (display conditions controlled with `KCA_DEBUG_PAGE_NO_AUTH`). You can set an app URL to present after successful authentication (`KCA_APP_URL`).
 
 
 ## Environment variables and useful options
@@ -55,19 +55,19 @@ The `compose.yml` file accepts environment variables to customize the demo.
   ```bash
   # Change default ports:
   export KCA_KC_HOST_PORT=9000
-  export KCA_OPENRESTY_HOST_PORT=9001
+  export KCA_CF_AUTH_SIM_HOST_PORT=9001
   curl -fsSL https://raw.githubusercontent.com/jul-m/keycloak-cloudfront-auth/refs/heads/main/docker/demo/compose.yml | docker compose -f - up -d
   ```
 - If using `./run.sh`, it supports `--vars` to define environment variables:
   ```bash
-  ./run.sh docker-run demo --vars KCA_KC_HOST_PORT=9000 KCA_OPENRESTY_HOST_PORT=9001 -d
+  ./run.sh docker-run demo --vars KCA_KC_HOST_PORT=9000 KCA_CF_AUTH_SIM_HOST_PORT=9001 -d
   ```
 
 \
 **Available variables (defaults in parentheses):**
 
 CloudFront simulator configuration:
-- `KCA_OPENRESTY_HOST_PORT` (`8081`): Host port exposed for the simulator container.
+- `KCA_CF_AUTH_SIM_HOST_PORT` (`8081`): Host port exposed for the simulator container.
 - `KCA_APP_URL`: App URL to display after successful auth (reverse proxy mode). If unset, a diagnostic page is shown.
 - `KCA_DEBUG_PAGE_NO_AUTH` (`on_error`): Diagnostic page display condition (`always`, `never`, `on_error`):
   - `always`: Show the page even if not authenticated.

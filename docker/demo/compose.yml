@@ -34,4 +34,4 @@ services:
       - KC_INTERNAL_URL=http://kca-demo_keycloak
       - APP_URL=${KCA_APP_URL:-}
     ports:
-      - "${KCA_OPENRESTY_HOST_PORT:-8081}:80"
+      - "${KCA_CF_AUTH_SIM_HOST_PORT:-8081}:80"

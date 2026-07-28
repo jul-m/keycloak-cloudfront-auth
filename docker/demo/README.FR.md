@@ -45,7 +45,7 @@ Ports par défaut et noms de conteneurs
 
 ## Rôles des containers
 - **keycloak** : instance Keycloak (image `ghcr.io/jul-m/keycloak-cloudfront-auth-demo`) contenant l'extension `keycloak-cloudfront-auth`. Fournit la console d'administration, le realm de démonstration et l'endpoint `/cloudfront-auth/` utilisé par CloudFront.
-- **cf-auth-sim** : simulateur CloudFront avec page de diagnostic. Il joue le rôle de CloudFront afin de tester localement le flux complet (redir. 403 → Keycloak → callback → génération de cookies CloudFront signés). Il propose également une page de diagnostic pour visualiser les cookies générés et les informations de session (conditions d'affichage configurables via la variable `KCA_DEBUG_PAGE_NO_AUTH`). Il est possible de définir l'URL d'une application web à présenter après authentification réussie (variable `KCA_APP_URL`).
+- **cf-auth-sim** : simulateur CloudFront avec page de diagnostic (image `ghcr.io/jul-m/keycloak-cloudfront-auth-simulator`). Il joue le rôle de CloudFront afin de tester localement le flux complet (redir. 403 → Keycloak → callback → génération de cookies CloudFront signés). Il propose également une page de diagnostic pour visualiser les cookies générés et les informations de session (conditions d'affichage configurables via la variable `KCA_DEBUG_PAGE_NO_AUTH`). Il est possible de définir l'URL d'une application web à présenter après authentification réussie (variable `KCA_APP_URL`).
 
 
 ## Variables d'environnement et options utiles
@@ -55,19 +55,19 @@ Le fichier `compose.yml` accepte des variables d'environnement pour personnalise
   ```bash
   # Changer les ports par défaut:
   export KCA_KC_HOST_PORT=9000
-  export KCA_OPENRESTY_HOST_PORT=9001
+  export KCA_CF_AUTH_SIM_HOST_PORT=9001
   curl -fsSL https://raw.githubusercontent.com/jul-m/keycloak-cloudfront-auth/refs/heads/main/docker/demo/compose.yml | docker compose -f - up -d
   ```
 - Si vous utilisez le script `./run.sh`, celui-ci accepte l'option `--vars` pour définir les variables d'environnement :
   ```bash
-  ./run.sh docker-run demo --vars KCA_KC_HOST_PORT=9000 KCA_OPENRESTY_HOST_PORT=9001 -d
+  ./run.sh docker-run demo --vars KCA_KC_HOST_PORT=9000 KCA_CF_AUTH_SIM_HOST_PORT=9001 -d
   ```
 
 \
 **Liste des variables disponibles (valeurs par défaut indiquées entre parenthèses) :**
 
 Paramétrage du simulateur CloudFront :
-- `KCA_OPENRESTY_HOST_PORT` (`8081`) : Port hôte exposé pour le conteneur simulateur CloudFront.
+- `KCA_CF_AUTH_SIM_HOST_PORT` (`8081`) : Port hôte exposé pour le conteneur simulateur CloudFront.
 - `KCA_APP_URL`: URL de l'application à afficher en cas d'authentification réussie (mode reverse-proxy). Si non définie, une page de diagnostic est affichée.
 - `KCA_DEBUG_PAGE_NO_AUTH` (`on_error`) : Condition d'affichage de la page debug du simulateur (`always`, `never` ou `on_error`) :
   - `always`: Affiche la page debug même si l'utilisateur n'est pas authentifié.

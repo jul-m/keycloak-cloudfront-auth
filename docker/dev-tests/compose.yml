@@ -22,7 +22,7 @@ services:
       - KC_SPI_REALM_RESTAPI_EXTENSION_CLOUDFRONT_AUTH_DISPLAY_REQUEST_ID=${KCA_KC_AUTH_DISPLAY_REQUEST_ID:-}
       # Specific for Dev-Tests compose project:
       - KCA_PROVIDER_JAR_NAME=${KCA_PROVIDER_JAR_NAME:-auto}
-      - KCA_OPENRESTY_HOST_PORT=${KCA_OPENRESTY_HOST_PORT:-8081}
+      - KCA_CF_AUTH_SIM_HOST_PORT=${KCA_CF_AUTH_SIM_HOST_PORT:-8081}
       - KCA_IMPORT_JSON_NAME=${KCA_IMPORT_JSON_NAME:-realm-config.json}
       - KCA_KC_REALM_NAME=${KCA_KC_REALM_NAME:-cloudfront-test}
       - KCA_KC_CLIENT_ID=${KCA_KC_CLIENT_ID:-cloudfront-test-client}
@@ -51,7 +51,7 @@ services:
       - KC_INTERNAL_URL=http://kc-cloudfront-auth_keycloak
       - APP_URL=${KCA_APP_URL:-}
     ports:
-      - "${KCA_OPENRESTY_HOST_PORT:-8081}:80"
+      - "${KCA_CF_AUTH_SIM_HOST_PORT:-8081}:80"
     volumes:
       - ../cf-auth-sim/src/opt/cf-auth-sim:/opt/cf-auth-sim:ro
       - ../cf-auth-sim/src/usr/local/openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
