@@ -17,6 +17,10 @@ elif [ "$REPO_ROOT" = "$(pwd)" ]; then
   DISPLAY_NAME="./scripts/$(basename "$0")"
 fi
 
+# Default image names (overridable per invocation with --image-name <name>)
+DEFAULT_CF_AUTH_SIM_IMAGE="keycloak-cloudfront-auth-simulator"
+DEFAULT_DEMO_IMAGE="keycloak-cloudfront-auth-demo"
+
 # If running under GitHub Actions, prefer plain progress output to avoid
 # interactive progress bars which don't render well in Actions logs.
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
@@ -37,14 +41,16 @@ Subcommands: demo, cf-auth-sim, help
 $DISPLAY_NAME cf-auth-sim [<tags>...]
   Build the CloudFront auth simulator image (docker/cf-auth-sim).
   Optional <tags> list (space-separated). Default: "latest".
-  Optional: append a separator `--` followed by any extra arguments to pass
+  Optional: --image-name <name> (default: ${DEFAULT_CF_AUTH_SIM_IMAGE})
+  Optional: append a separator '--' followed by any extra arguments to pass
   directly to 'docker build'. Example: -- --platform linux/amd64,linux/arm64 --pull
 
 $DISPLAY_NAME demo <KC_VERSION> [<tags>...]
   Build preconfigured Keycloak image for keycloak-cloudfront-auth Demo (docker/demo/Dockerfile).
   <KC_VERSION> must be in format XX.Y and provider version build must exist in dist/. Example: "26.3"
   Optional <tags> list (space-separated). Default: "latest".
-  Optional: append a separator `--` followed by any extra arguments to pass
+  Optional: --image-name <name> (default: ${DEFAULT_DEMO_IMAGE})
+  Optional: append a separator '--' followed by any extra arguments to pass
   directly to 'docker build'. Example: -- --platform linux/amd64,linux/arm64 --pull
 
 $DISPLAY_NAME help
@@ -61,7 +67,7 @@ fi
 case "$1" in
   -h|--help|help)
     usage
-    ;;
+  ;;
   
   cf-auth-sim)
     shift || true
@@ -70,7 +76,20 @@ case "$1" in
     # Example: cf-auth-sim tag1 tag2 -- --platform linux/amd64,linux/arm64 --pull
     DOCKER_EXTRA_ARGS=()
     tags=()
+    image_name="$DEFAULT_CF_AUTH_SIM_IMAGE"
     while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --image-name)
+          shift || true
+          image_name="${1:-}"
+          if [ -z "$image_name" ]; then
+            echo "--image-name requires a non-empty value" >&2
+            exit 2
+          fi
+          shift || true
+          continue
+          ;;
+      esac
       if [ "$1" = "--" ]; then
         shift || true
         DOCKER_EXTRA_ARGS=("$@")
@@ -83,7 +102,7 @@ case "$1" in
       tags=("latest")
     fi
 
-    echo "Building docker image 'keycloak-cloudfront-auth-simulator' with tags: ${tags[*]}"
+    echo "Building docker image '${image_name}' with tags: ${tags[*]}"
     if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
       echo "  docker build extra args: ${DOCKER_EXTRA_ARGS[*]}"
     fi
@@ -94,18 +113,18 @@ case "$1" in
       if [ -z "$t" ]; then
         t=latest
       fi
-      build_tag_args+=( -t "keycloak-cloudfront-auth-simulator:${t}" )
+      build_tag_args+=( -t "${image_name}:${t}" )
     done
 
-  docker_args=("${build_tag_args[@]}")
-  if [ "${#PROGRESS_ARG[@]}" -gt 0 ]; then
-    docker_args+=("${PROGRESS_ARG[@]}")
-  fi
-  if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
-    docker_args+=("${DOCKER_EXTRA_ARGS[@]}")
-  fi
-  docker build "${docker_args[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
-    ;;
+    docker_args=("${build_tag_args[@]}")
+    if [ "${#PROGRESS_ARG[@]}" -gt 0 ]; then
+      docker_args+=("${PROGRESS_ARG[@]}")
+    fi
+    if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
+      docker_args+=("${DOCKER_EXTRA_ARGS[@]}")
+    fi
+    docker build "${docker_args[@]}" -f docker/cf-auth-sim/Dockerfile docker/cf-auth-sim
+  ;;
   
   demo)
     shift
@@ -123,7 +142,20 @@ case "$1" in
     # Example: demo 26.3 tag1 -- --platform linux/amd64,linux/arm64 --pull
     DOCKER_EXTRA_ARGS=()
     tags=()
+    image_name="$DEFAULT_DEMO_IMAGE"
     while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --image-name)
+          shift || true
+          image_name="${1:-}"
+          if [ -z "$image_name" ]; then
+            echo "--image-name requires a non-empty value" >&2
+            exit 2
+          fi
+          shift || true
+          continue
+          ;;
+      esac
       if [ "$1" = "--" ]; then
         shift || true
         DOCKER_EXTRA_ARGS=("$@")
@@ -174,23 +206,23 @@ case "$1" in
     PROVIDER_JAR_PATH="${matches[0]}"
     PROVIDER_JAR_NAME="$(basename "$PROVIDER_JAR_PATH")"
 
-  echo "Building docker image 'keycloak-cloudfront-auth-demo' with tags: ${tags[*]}"
-  echo "  KC_VERSION=$KC_VERSION"
-  echo "  PROVIDER_JAR_NAME=$PROVIDER_JAR_NAME"
-  if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
-    echo "  docker build extra args: ${DOCKER_EXTRA_ARGS[*]}"
-  fi
+    echo "Building docker image '${image_name}' with tags: ${tags[*]}"
+    echo "  KC_VERSION=$KC_VERSION"
+    echo "  PROVIDER_JAR_NAME=$PROVIDER_JAR_NAME"
+    if [ "${#DOCKER_EXTRA_ARGS[@]}" -gt 0 ]; then
+      echo "  docker build extra args: ${DOCKER_EXTRA_ARGS[*]}"
+    fi
 
-  # Ensure keycloak-config-cli jar is available in lib/ (download if needed)
-  echo "Fetching keycloak-config-cli for Keycloak $KC_VERSION into lib/... if missing"
-  scripts/fetch-kc-config-cli.sh "$KC_VERSION"
+    # Ensure keycloak-config-cli jar is available in lib/ (download if needed)
+    echo "Fetching keycloak-config-cli for Keycloak $KC_VERSION into lib/... if missing"
+    scripts/fetch-kc-config-cli.sh "$KC_VERSION"
 
     build_tag_args=()
     for t in "${tags[@]}"; do
       if [ -z "$t" ]; then
         t=latest
       fi
-      build_tag_args+=( -t "keycloak-cloudfront-auth-demo:${t}" )
+      build_tag_args+=( -t "${image_name}:${t}" )
     done
 
     docker_args=("${build_tag_args[@]}")
@@ -204,10 +236,10 @@ case "$1" in
       --build-arg KC_VERSION="$KC_VERSION" \
       --build-arg PROVIDER_JAR_NAME="$PROVIDER_JAR_NAME" \
       .
-    ;;
+  ;;
   
   *)
     echo "Unknown subcommand: $1" >&2
     usage
-    ;;
+  ;;
 esac

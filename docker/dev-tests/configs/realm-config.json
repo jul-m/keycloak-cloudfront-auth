@@ -15,10 +15,10 @@
       "implicitFlowEnabled": false,
       "publicClient": false,
       "protocol": "openid-connect",
-      "rootUrl": "http://localhost:$(env:KCA_OPENRESTY_HOST_PORT)",
-      "baseUrl": "http://localhost:$(env:KCA_OPENRESTY_HOST_PORT)",
+      "rootUrl": "http://localhost:$(env:KCA_CF_AUTH_SIM_HOST_PORT)",
+      "baseUrl": "http://localhost:$(env:KCA_CF_AUTH_SIM_HOST_PORT)",
       "redirectUris": [
-        "http://localhost:$(env:KCA_OPENRESTY_HOST_PORT)/.cdn-auth/callback/*"
+        "http://localhost:$(env:KCA_CF_AUTH_SIM_HOST_PORT)/.cdn-auth/callback/*"
       ],
       "protocolMappers": [
         {

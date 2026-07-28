@@ -191,8 +191,8 @@ public class CloudFrontAuthResource {
             ClientSessionContext sessionContext = DefaultClientSessionContext.fromClientSessionAndScopeParameter(
                 clientSession, OAuth2Constants.SCOPE_OPENID, session);
 
-            AccessToken accessToken = this.tokenManager.createClientAccessToken(
-                session, authenticatedClient.realm, authenticatedClient.client,
+            AccessToken accessToken = createClientAccessToken(
+                authenticatedClient.realm, authenticatedClient.client,
                 user, clientSession.getUserSession(), sessionContext);
 
             // Verify user has required role
@@ -321,6 +321,92 @@ public class CloudFrontAuthResource {
             logger.errorf(e, "%s - Error processing token response", logPrefix);
             return errorResponse(
                 session, Messages.INVALID_REQUEST, Response.Status.BAD_REQUEST, requestId, event, e.getMessage());
+        }
+    }
+
+    /**
+     * Creates an access token across the Keycloak API variants supported by this
+     * extension. Keycloak 26.7 added the isOffline parameter to this method,
+     * while earlier versions expose the six-argument variant.
+     */
+    private AccessToken createClientAccessToken(
+        RealmModel realm,
+        ClientModel client,
+        UserModel user,
+        UserSessionModel userSession,
+        ClientSessionContext clientSessionContext
+    ) {
+        try {
+            try {
+                java.lang.reflect.Method method = TokenManager.class.getMethod(
+                    "createClientAccessToken",
+                    KeycloakSession.class,
+                    RealmModel.class,
+                    ClientModel.class,
+                    UserModel.class,
+                    UserSessionModel.class,
+                    ClientSessionContext.class,
+                    boolean.class);
+                return (AccessToken) method.invoke(
+                    tokenManager,
+                    session,
+                    realm,
+                    client,
+                    user,
+                    userSession,
+                    clientSessionContext,
+                    isOfflineTokenRequested(clientSessionContext));
+            } catch (NoSuchMethodException e) {
+                java.lang.reflect.Method method = TokenManager.class.getMethod(
+                    "createClientAccessToken",
+                    KeycloakSession.class,
+                    RealmModel.class,
+                    ClientModel.class,
+                    UserModel.class,
+                    UserSessionModel.class,
+                    ClientSessionContext.class);
+                return (AccessToken) method.invoke(
+                    tokenManager,
+                    session,
+                    realm,
+                    client,
+                    user,
+                    userSession,
+                    clientSessionContext);
+            }
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IllegalStateException("Unable to create the Keycloak access token", cause);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Unsupported Keycloak TokenManager API", e);
+        }
+    }
+
+    private boolean isOfflineTokenRequested(ClientSessionContext clientSessionContext) {
+        try {
+            java.lang.reflect.Method method = clientSessionContext.getClass().getMethod(
+                "isOfflineTokenRequested");
+            return (Boolean) method.invoke(clientSessionContext);
+        } catch (NoSuchMethodException e) {
+            // This method was added after the oldest Keycloak versions supported here.
+            return false;
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IllegalStateException("Unable to determine the token type", cause);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Unable to determine the token type", e);
         }
     }
 

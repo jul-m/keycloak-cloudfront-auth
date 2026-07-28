@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$REPO_ROOT/scripts"
 
 print_help() {
-    cat <<'EOF'
+    cat <<EOF
 Usage: $0 <command> [options] [args]
 
 Commands:
@@ -26,11 +26,11 @@ EOF
 }
 
 print_build_help() {
-    cat <<'EOF'
+    cat <<EOF
 Usage: $0 build [OPTIONS] [KEYCLOAK_VERSION] [BUILD_SUFFIX]
 
 This runs scripts/build.sh with the same arguments. KEYCLOAK_VERSION accepts a version like
-`26` or `26.0` or the literal `all` (default) to build/test all supported versions. Additional
+26 or 26.0 or the literal 'all' (default) to build/test all supported versions. Additional
 options handled by this wrapper:
     -t, --test                  Run integration tests (scripts/test-integration.sh) if the build succeeds.
     --keep-containers=POLICY    Forwarded to tests when --test is used.
@@ -50,11 +50,11 @@ Behavior on failure when using on-failure / always:
 Any other positional arguments are forwarded to scripts/build.sh unchanged.
 
 Examples:
-  $0 build                     # Run build for default (all)
-  $0 build 26.0                # Build Keycloak 26.0
-  $0 build 26.0 SNAPSHOT       # Build Keycloak 26.0 with SNAPSHOT suffix
-    $0 build -t --keep-containers=always 26.0
-    $0 build -r 26.3        # build and run the dev-tests stack for the built version
+    $0 build                     # Run build for default (all)
+    $0 build 26.0                # Build Keycloak 26.0
+    $0 build 26.0 SNAPSHOT       # Build Keycloak 26.0 with SNAPSHOT suffix
+        $0 build -t --keep-containers=always 26.0
+        $0 build -r 26.3        # build and run the dev-tests stack for the built version
 EOF
 }
 
@@ -197,7 +197,7 @@ case "$COMMAND" in
 
             if [ -n "$kc_version" ]; then
                 echo "Using Keycloak version from build args: $kc_version"
-                PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" dev-tests -d "$kc_version"
+                "$SCRIPTS_DIR/docker-run.sh" dev-tests -d "$kc_version"
                 rc=$?
                 if [ $rc -ne 0 ]; then
                     echo "[ERROR] docker-run failed (exit code $rc)."
@@ -212,7 +212,7 @@ case "$COMMAND" in
                         kc_version=$(basename "$latest_jar" | sed -n 's/.*-KC\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
                         if [ -n "$kc_version" ]; then
                             echo "Use latest Keycloak version: $kc_version"
-                            PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" dev-tests -d "$kc_version"
+                            "$SCRIPTS_DIR/docker-run.sh" dev-tests -d "$kc_version"
                             rc=$?
                             if [ $rc -ne 0 ]; then
                                 echo "[ERROR] docker-run failed (exit code $rc)."
@@ -239,10 +239,10 @@ case "$COMMAND" in
     docker-build)
         # Delegate to scripts/docker-build.sh
         if [ "$#" -eq 0 ]; then
-            PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" help
+            "$SCRIPTS_DIR/docker-build.sh" help
+        else
+            "$SCRIPTS_DIR/docker-build.sh" "$@"
         fi
-
-        PARENT_CMD="$0 docker-build" "$SCRIPTS_DIR/docker-build.sh" "$@"
         rc=$?
         if [ $rc -ne 0 ]; then
             echo "[ERROR] docker-build failed (exit code $rc)."
@@ -253,10 +253,10 @@ case "$COMMAND" in
     docker-run)
         # Delegate to scripts/docker-run.sh
         if [ "$#" -eq 0 ]; then
-            PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" help
+            "$SCRIPTS_DIR/docker-run.sh" help
+        else
+            "$SCRIPTS_DIR/docker-run.sh" "$@"
         fi
-
-        PARENT_CMD="$0 docker-run" "$SCRIPTS_DIR/docker-run.sh" "$@"
         rc=$?
         if [ $rc -ne 0 ]; then
             echo "[ERROR] docker-run failed (exit code $rc)."

@@ -22,7 +22,7 @@ if ! [[ "$KC_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
   echo "Warning: KC_VERSION '$KC_VERSION' does not match expected format XX.Y; proceeding with default mapping." >&2
 fi
 
-# Map Keycloak version -> keycloak-config-cli versions (copied from build-docker.sh)
+# Map Keycloak version -> keycloak-config-cli versions
 case "$KC_VERSION" in
     "26.3")
         KC_CONFIG_CLI_KC_VERSION="26.1.0"
