@@ -138,8 +138,7 @@ jobs:
         kc_version: ${{ fromJSON(needs.build-jars.outputs.versions) }}
         platform: [amd64, arm64]
       fail-fast: false
-    runs-on: ${{ matrix.platform == 'arm64' && 'self-hosted' || 'ubuntu-24.04' }}
-    # runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }} # !!! TODO !!! TEMP !!!
+    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     
     steps:
       - name: Checkout
